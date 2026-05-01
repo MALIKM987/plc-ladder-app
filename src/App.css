@@ -206,9 +206,21 @@
 .ladder-rung {
   position: relative;
   display: grid;
-  grid-template-columns: 50px minmax(80px, 1fr) 170px 170px;
-  align-items: center;
+  grid-template-columns: 72px minmax(560px, 1fr);
+  grid-template-rows: auto auto;
+  align-items: start;
+  column-gap: 14px;
   min-width: 650px;
+  min-height: 118px;
+  padding-bottom: 14px;
+}
+
+.ladder-rung__meta {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   min-height: 78px;
 }
 
@@ -219,32 +231,131 @@
 }
 
 .ladder-line {
-  grid-column: 2 / 5;
+  grid-column: 2;
+  grid-row: 1;
+  align-self: center;
   height: 3px;
   background: var(--ladder-line);
+}
+
+.ladder-elements {
+  position: relative;
+  z-index: 1;
+  grid-column: 2;
+  grid-row: 1;
+  display: flex;
+  align-items: center;
+  gap: 34px;
+  min-height: 78px;
+}
+
+.ladder-element {
+  display: grid;
+  gap: 8px;
+  justify-items: center;
+  min-width: 130px;
 }
 
 .ladder-contact,
 .ladder-coil {
   position: relative;
   z-index: 1;
-  justify-self: center;
   border: 1px solid var(--border);
   border-radius: 4px;
   background: var(--panel-bg);
+  color: var(--text);
+  cursor: pointer;
+  min-width: 128px;
   padding: 8px 12px;
   font-family: var(--mono);
   font-size: 13px;
 }
 
-.ladder-contact {
-  grid-column: 3;
-  grid-row: 1;
+.ladder-contact:hover,
+.ladder-coil:hover,
+.ladder-element--selected {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
-.ladder-coil {
-  grid-column: 4;
-  grid-row: 1;
+.ladder-element--selected {
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.12);
+}
+
+.rung-actions,
+.editor-actions,
+.element-editor {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.rung-actions {
+  grid-column: 2;
+  grid-row: 2;
+  flex-wrap: wrap;
+}
+
+.editor-actions {
+  min-width: 650px;
+  padding: 14px 0 0 86px;
+}
+
+.rung-action-button,
+.add-rung-button,
+.rung-delete-button,
+.element-delete-button,
+.element-editor select {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--control-bg);
+  color: var(--text);
+  font: inherit;
+}
+
+.rung-action-button,
+.add-rung-button,
+.element-delete-button {
+  cursor: pointer;
+  padding: 7px 10px;
+  font-size: 13px;
+}
+
+.rung-delete-button {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.element-editor {
+  align-items: stretch;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel-bg);
+  padding: 6px;
+}
+
+.element-editor select {
+  max-width: 132px;
+  padding: 6px 8px;
+  font-size: 12px;
+}
+
+.element-editor select:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.rung-action-button:hover,
+.add-rung-button:hover,
+.rung-delete-button:hover,
+.element-delete-button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .simulation-summary {

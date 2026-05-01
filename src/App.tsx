@@ -82,7 +82,11 @@ function App() {
 
       <main className="workspace" aria-label="Obszar roboczy edytora PLC">
         <BlockLibrary />
-        <LadderEditor project={project} simulationStatus={simulationStatus} />
+        <LadderEditor
+          project={project}
+          setProject={setProject}
+          simulationStatus={simulationStatus}
+        />
         <SimulationPanel
           project={project}
           setProject={setProject}
