@@ -1,5 +1,7 @@
 import {
   type ChangeEvent,
+  type Dispatch,
+  type SetStateAction,
   useCallback,
   useEffect,
   useRef,
@@ -11,8 +13,11 @@ import { LadderEditor } from './components/LadderEditor'
 import { SimulationPanel } from './components/SimulationPanel'
 import { TopBar } from './components/TopBar'
 import { demoProject } from './data/demoProject'
+import { exportProjectToStructuredText } from './export/stExport'
 import type { Language } from './i18n/translations'
 import { useTranslation } from './i18n/useTranslation'
+import { migrateProject } from './project/migrateProject'
+import { resetSimulationProject } from './project/projectActions'
 import { simulateProjectWithState } from './simulator/simulate'
 import type { SimulationState } from './simulator/simulationState'
 import type { Project } from './types/project'
@@ -25,9 +30,35 @@ const SCAN_INTERVAL_MS = 200
 const THEME_STORAGE_KEY = 'plc-ladder-theme'
 const LANGUAGE_STORAGE_KEY = 'plc-ladder-language'
 const DEBUG_STORAGE_KEY = 'plc-ladder-show-debug'
+const HISTORY_LIMIT = 60
+
+function downloadTextFile(fileName: string, content: string, type: string) {
+  const blob = new Blob([content], { type })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+
+  link.href = url
+  link.download = fileName
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
+}
+
+function isFormTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) {
+    return false
+  }
+
+  return ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)
+}
 
 function App() {
-  const [project, setProject] = useState<Project>(demoProject)
+  const [project, setProjectState] = useState<Project>(() =>
+    migrateProject(demoProject),
+  )
+  const [undoStack, setUndoStack] = useState<Project[]>([])
+  const [redoStack, setRedoStack] = useState<Project[]>([])
   const [simulationStatus, setSimulationStatus] =
     useState<SimulationStatus>('STOP')
   const [simulationState, setSimulationState] =
@@ -43,16 +74,56 @@ function App() {
     () => localStorage.getItem(DEBUG_STORAGE_KEY) === 'true',
   )
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const projectRef = useRef(project)
   const { t } = useTranslation(language)
 
+  useEffect(() => {
+    projectRef.current = project
+  }, [project])
+
+  const setProjectWithHistory: Dispatch<SetStateAction<Project>> =
+    useCallback((update) => {
+      setProjectState((currentProject) => {
+        const nextProject =
+          typeof update === 'function'
+            ? (update as (project: Project) => Project)(currentProject)
+            : update
+
+        if (nextProject !== currentProject) {
+          setUndoStack((currentStack) => [
+            ...currentStack.slice(-(HISTORY_LIMIT - 1)),
+            currentProject,
+          ])
+          setRedoStack([])
+        }
+
+        return nextProject
+      })
+    }, [])
+
+  const setProjectWithoutHistory: Dispatch<SetStateAction<Project>> =
+    useCallback((update) => {
+      setProjectState((currentProject) =>
+        typeof update === 'function'
+          ? (update as (project: Project) => Project)(currentProject)
+          : update,
+      )
+    }, [])
+
   const executeScan = useCallback(() => {
-    setProject((currentProject) => {
+    setProjectState((currentProject) => {
       const result = simulateProjectWithState(
         currentProject,
         SCAN_INTERVAL_MS,
+        { stopAtBreakpoint: true },
       )
 
       setSimulationState(result.state)
+
+      if (result.state.breakpointRungId) {
+        setSimulationStatus('STOP')
+      }
+
       return result.project
     })
     setScanCount((currentScanCount) => currentScanCount + 1)
@@ -88,9 +159,83 @@ function App() {
     setScanCount(0)
   }
 
+  const resetHistory = () => {
+    setUndoStack([])
+    setRedoStack([])
+  }
+
+  const handleUndo = useCallback(() => {
+    if (simulationStatus === 'RUN') {
+      return
+    }
+
+    setUndoStack((currentUndoStack) => {
+      const previousProject = currentUndoStack[currentUndoStack.length - 1]
+
+      if (!previousProject) {
+        return currentUndoStack
+      }
+
+      setRedoStack((currentRedoStack) => [
+        projectRef.current,
+        ...currentRedoStack,
+      ])
+      setProjectState(previousProject)
+      setSimulationState(null)
+
+      return currentUndoStack.slice(0, -1)
+    })
+  }, [simulationStatus])
+
+  const handleRedo = useCallback(() => {
+    if (simulationStatus === 'RUN') {
+      return
+    }
+
+    setRedoStack((currentRedoStack) => {
+      const nextProject = currentRedoStack[0]
+
+      if (!nextProject) {
+        return currentRedoStack
+      }
+
+      setUndoStack((currentUndoStack) => [
+        ...currentUndoStack.slice(-(HISTORY_LIMIT - 1)),
+        projectRef.current,
+      ])
+      setProjectState(nextProject)
+      setSimulationState(null)
+
+      return currentRedoStack.slice(1)
+    })
+  }, [simulationStatus])
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (isFormTarget(event.target)) {
+        return
+      }
+
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {
+        event.preventDefault()
+        handleUndo()
+      }
+
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'y') {
+        event.preventDefault()
+        handleRedo()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [handleRedo, handleUndo])
+
   const handleNewProject = () => {
-    setProject(structuredClone(demoProject))
+    setProjectState(migrateProject(demoProject))
     resetRuntimeState()
+    resetHistory()
   }
 
   const handleOpenProject = () => {
@@ -109,10 +254,11 @@ function App() {
 
     try {
       const fileContent = await file.text()
-      const loadedProject = JSON.parse(fileContent) as Project
+      const loadedProject = migrateProject(JSON.parse(fileContent))
 
-      setProject(loadedProject)
+      setProjectState(loadedProject)
       resetRuntimeState()
+      resetHistory()
     } catch {
       window.alert('Nie udalo sie wczytac projektu PLC Ladder.')
     } finally {
@@ -121,17 +267,19 @@ function App() {
   }
 
   const handleSaveProject = () => {
-    const fileContent = JSON.stringify(project, null, 2)
-    const blob = new Blob([fileContent], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
+    downloadTextFile(
+      'project.plclad',
+      JSON.stringify(project, null, 2),
+      'application/json',
+    )
+  }
 
-    link.href = url
-    link.download = 'project.plclad'
-    document.body.appendChild(link)
-    link.click()
-    link.remove()
-    URL.revokeObjectURL(url)
+  const handleExportStructuredText = () => {
+    downloadTextFile(
+      'project.st',
+      exportProjectToStructuredText(project),
+      'text/plain',
+    )
   }
 
   const handleRunSimulation = () => {
@@ -141,6 +289,16 @@ function App() {
   }
 
   const handleStopSimulation = () => {
+    resetRuntimeState()
+  }
+
+  const handleStepScan = () => {
+    setSimulationStatus('STOP')
+    executeScan()
+  }
+
+  const handleResetSimulation = () => {
+    setProjectState((currentProject) => resetSimulationProject(currentProject))
     resetRuntimeState()
   }
 
@@ -157,15 +315,22 @@ function App() {
         onNewProject={handleNewProject}
         onOpenProject={handleOpenProject}
         onSaveProject={handleSaveProject}
+        onExportStructuredText={handleExportStructuredText}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
+        canUndo={undoStack.length > 0}
+        canRedo={redoStack.length > 0}
         onRunSimulation={handleRunSimulation}
         onStopSimulation={handleStopSimulation}
+        onStepScan={handleStepScan}
+        onResetSimulation={handleResetSimulation}
       />
 
       <main className="workspace" aria-label="PLC Ladder workspace">
         <BlockLibrary t={t} />
         <LadderEditor
           project={project}
-          setProject={setProject}
+          setProject={setProjectWithHistory}
           simulationStatus={simulationStatus}
           simulationState={simulationState}
           showDebug={showDebug}
@@ -173,17 +338,18 @@ function App() {
         />
         <SimulationPanel
           project={project}
-          setProject={setProject}
+          setProject={setProjectWithoutHistory}
           simulationStatus={simulationStatus}
           scanCount={scanCount}
           scanIntervalMs={SCAN_INTERVAL_MS}
+          simulationState={simulationState}
           t={t}
         />
       </main>
 
       <BottomPanel
         project={project}
-        setProject={setProject}
+        setProject={setProjectWithHistory}
         simulationStatus={simulationStatus}
         t={t}
       />

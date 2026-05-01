@@ -2,6 +2,7 @@ import {
   type Dispatch,
   type DragEvent,
   type SetStateAction,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -18,20 +19,31 @@ import ReactFlow, {
 } from 'reactflow'
 import 'reactflow/dist/style.css'
 import { LADDER_ELEMENT_DRAG_TYPE } from '../constants/dragDrop'
+import { LEFT_RAIL_ID, RIGHT_RAIL_ID, isRailId } from '../constants/rails'
 import type { TranslationKey } from '../i18n/translations'
 import {
   addConnection,
   addElement,
+  addElementsToRung,
   addRung,
+  createId,
   removeConnection,
   removeElement,
   removeRung,
+  snapPosition,
   updateElementPosition,
 } from '../project/projectActions'
 import type { SimulationState } from '../simulator/simulationState'
-import type { ElementType, LadderElement, Project, Rung } from '../types/project'
+import type {
+  Connection,
+  ElementType,
+  LadderElement,
+  Project,
+  Rung,
+} from '../types/project'
 import { LadderNode, type LadderNodeData } from './LadderNode'
 import { PropertiesPanel } from './PropertiesPanel'
+import { RailNode, type RailNodeData } from './RailNode'
 
 type LadderEditorProps = {
   project: Project
@@ -42,12 +54,24 @@ type LadderEditorProps = {
   t: (key: TranslationKey) => string
 }
 
-const nodeTypes = {
-  ladderNode: LadderNode,
+type CopiedSelection = {
+  rungId: string
+  elements: LadderElement[]
+  connections: Connection[]
 }
 
+const nodeTypes = {
+  ladderNode: LadderNode,
+  railNode: RailNode,
+}
+
+const RAIL_Y = 70
+const LEFT_RAIL_X = 0
+const RIGHT_RAIL_X = 760
+const PASTE_OFFSET = 40
+
 function createElementId() {
-  return `element-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  return createId('element')
 }
 
 function getVariableName(variableId: string, project: Project) {
@@ -61,11 +85,19 @@ function getVariable(variableId: string, project: Project) {
   return project.variables.find((candidate) => candidate.id === variableId)
 }
 
-function getElementDebugName(
+function getEndpointDebugName(
   elementId: string,
   elements: LadderElement[],
   project: Project,
 ) {
+  if (elementId === LEFT_RAIL_ID) {
+    return 'L+'
+  }
+
+  if (elementId === RIGHT_RAIL_ID) {
+    return 'R'
+  }
+
   const sortedElements = [...elements].sort(
     (first, second) => first.position.x - second.position.x,
   )
@@ -82,7 +114,13 @@ function isElementType(value: string): value is ElementType {
     value === 'NO_CONTACT' ||
     value === 'NC_CONTACT' ||
     value === 'COIL' ||
-    value === 'TON'
+    value === 'TON' ||
+    value === 'TOF' ||
+    value === 'TP' ||
+    value === 'CTU' ||
+    value === 'CTD' ||
+    value === 'SET_COIL' ||
+    value === 'RESET_COIL'
   )
 }
 
@@ -99,34 +137,58 @@ function isInputContact(element: LadderElement, project: Project) {
 function mapRungToNodes(
   rung: Rung,
   project: Project,
-  selectedElementId: string | null,
+  selectedElementIds: string[],
   simulationStatus: 'RUN' | 'STOP',
   simulationState: SimulationState | null,
   t: (key: TranslationKey) => string,
-): Node<LadderNodeData>[] {
-  return rung.elements.map((element) => {
-    const variable = getVariable(element.variableId, project)
-    const inputToggleable =
-      simulationStatus === 'RUN' && isInputContact(element, project)
+): Array<Node<LadderNodeData | RailNodeData>> {
+  const elementNodes: Array<Node<LadderNodeData | RailNodeData>> =
+    rung.elements.map((element) => {
+      const variable = getVariable(element.variableId, project)
+      const inputToggleable =
+        simulationStatus === 'RUN' && isInputContact(element, project)
 
-    return {
-      id: element.id,
-      type: 'ladderNode',
-      position: element.position,
-      selected: selectedElementId === element.id,
-      data: {
-        elementType: element.type,
-        variableName: variable?.name ?? t('noVariables'),
-        isActive:
-          simulationState?.activeElementIds.includes(element.id) ?? false,
-        isInputToggleable: inputToggleable,
-        inputToggleTitle: inputToggleable ? t('inputToggleHint') : undefined,
-        timerPresetMs: variable?.presetMs,
-        timerElapsedMs: variable?.elapsedMs,
-        timerDone: variable?.done,
-      },
-    }
-  })
+      return {
+        id: element.id,
+        type: 'ladderNode',
+        position: element.position,
+        selected: selectedElementIds.includes(element.id),
+        data: {
+          elementType: element.type,
+          variableName: variable?.name ?? t('noVariables'),
+          isActive:
+            simulationState?.activeElementIds.includes(element.id) ?? false,
+          isInputToggleable: inputToggleable,
+          inputToggleTitle: inputToggleable ? t('inputToggleHint') : undefined,
+          timerPresetMs: variable?.presetMs,
+          timerElapsedMs: variable?.elapsedMs,
+          timerDone: variable?.done,
+          counterPreset: variable?.preset,
+          counterCount: variable?.count,
+          counterDone: variable?.done,
+        },
+      }
+    })
+
+  return [
+    {
+      id: LEFT_RAIL_ID,
+      type: 'railNode',
+      position: { x: LEFT_RAIL_X, y: RAIL_Y },
+      selectable: false,
+      draggable: false,
+      data: { label: 'L+', side: 'left' },
+    },
+    ...elementNodes,
+    {
+      id: RIGHT_RAIL_ID,
+      type: 'railNode',
+      position: { x: RIGHT_RAIL_X, y: RAIL_Y },
+      selectable: false,
+      draggable: false,
+      data: { label: 'R', side: 'right' },
+    },
+  ]
 }
 
 function mapRungToEdges(
@@ -154,6 +216,14 @@ function mapRungToEdges(
   })
 }
 
+function isFormTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) {
+    return false
+  }
+
+  return ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)
+}
+
 export function LadderEditor({
   project,
   setProject,
@@ -162,15 +232,18 @@ export function LadderEditor({
   showDebug,
   t,
 }: LadderEditorProps) {
-  const [selectedElementId, setSelectedElementId] = useState<string | null>(
-    null,
-  )
+  const [selectedElementIds, setSelectedElementIds] = useState<string[]>([])
   const [selectedEdgeIds, setSelectedEdgeIds] = useState<string[]>([])
+  const [selectedRungId, setSelectedRungId] = useState<string | null>(
+    project.rungs[0]?.id ?? null,
+  )
+  const [copiedSelection, setCopiedSelection] =
+    useState<CopiedSelection | null>(null)
   const flowInstancesRef = useRef(new Map<string, ReactFlowInstance>())
   const canEdit = simulationStatus !== 'RUN'
 
   const clearSelection = () => {
-    setSelectedElementId(null)
+    setSelectedElementIds([])
     setSelectedEdgeIds([])
   }
 
@@ -188,6 +261,7 @@ export function LadderEditor({
     }
 
     clearSelection()
+    setSelectedRungId(null)
     setProject((currentProject) => removeRung(currentProject, rungId))
   }
 
@@ -202,8 +276,9 @@ export function LadderEditor({
 
     const elementId = createElementId()
 
-    setSelectedElementId(elementId)
+    setSelectedElementIds([elementId])
     setSelectedEdgeIds([])
+    setSelectedRungId(rungId)
     setProject((currentProject) =>
       addElement(currentProject, rungId, type, {
         id: elementId,
@@ -243,16 +318,108 @@ export function LadderEditor({
     })
   }
 
+  const copySelectedElements = () => {
+    if (!selectedRungId || selectedElementIds.length === 0) {
+      return
+    }
+
+    const rung = project.rungs.find((candidate) => candidate.id === selectedRungId)
+
+    if (!rung) {
+      return
+    }
+
+    const selectedIds = new Set(selectedElementIds)
+    const elements = rung.elements
+      .filter((element) => selectedIds.has(element.id))
+      .map((element) => ({ ...element, position: { ...element.position } }))
+    const connections = rung.connections
+      .filter(
+        (connection) =>
+          selectedIds.has(connection.fromElementId) &&
+          selectedIds.has(connection.toElementId),
+      )
+      .map((connection) => ({ ...connection }))
+
+    setCopiedSelection({ rungId: rung.id, elements, connections })
+  }
+
+  const pasteSelectedElements = () => {
+    if (!copiedSelection || !selectedRungId || !canEdit) {
+      return
+    }
+
+    const idMap = new Map<string, string>()
+    const elements = copiedSelection.elements.map((element) => {
+      const nextId = createId('element')
+
+      idMap.set(element.id, nextId)
+
+      return {
+        ...element,
+        id: nextId,
+        position: snapPosition({
+          x: element.position.x + PASTE_OFFSET,
+          y: element.position.y + PASTE_OFFSET,
+        }),
+      }
+    })
+    const connections = copiedSelection.connections
+      .map((connection) => {
+        const fromElementId = idMap.get(connection.fromElementId)
+        const toElementId = idMap.get(connection.toElementId)
+
+        if (!fromElementId || !toElementId) {
+          return undefined
+        }
+
+        return {
+          id: createId('connection'),
+          fromElementId,
+          toElementId,
+        }
+      })
+      .filter((connection): connection is Connection => Boolean(connection))
+
+    setSelectedElementIds(elements.map((element) => element.id))
+    setSelectedEdgeIds([])
+    setProject((currentProject) =>
+      addElementsToRung(currentProject, selectedRungId, elements, connections),
+    )
+  }
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (isFormTarget(event.target)) {
+        return
+      }
+
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'c') {
+        event.preventDefault()
+        copySelectedElements()
+      }
+
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'v') {
+        event.preventDefault()
+        pasteSelectedElements()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  })
+
   const handleNodesChange = (changes: NodeChange[]) => {
     for (const change of changes) {
-      if (change.type === 'select') {
-        setSelectedElementId((currentElementId) =>
-          change.selected
-            ? change.id
-            : currentElementId === change.id
-              ? null
-              : currentElementId,
-        )
+      if (change.type === 'select' && !isRailId(change.id)) {
+        setSelectedElementIds((currentElementIds) => {
+          if (change.selected) {
+            return [...new Set([...currentElementIds, change.id])]
+          }
+
+          return currentElementIds.filter((elementId) => elementId !== change.id)
+        })
         setSelectedEdgeIds([])
       }
     }
@@ -263,7 +430,11 @@ export function LadderEditor({
 
     setProject((currentProject) =>
       changes.reduce((nextProject, change) => {
-        if (change.type !== 'position' || !change.position) {
+        if (
+          change.type !== 'position' ||
+          !change.position ||
+          isRailId(change.id)
+        ) {
           return nextProject
         }
 
@@ -286,6 +457,7 @@ export function LadderEditor({
       ),
     )
     setSelectedEdgeIds([])
+    setSelectedRungId(rungId)
   }
 
   const handleEdgesChange = (rungId: string, changes: EdgeChange[]) => {
@@ -298,7 +470,8 @@ export function LadderEditor({
 
           return currentEdgeIds.filter((edgeId) => edgeId !== change.id)
         })
-        setSelectedElementId(null)
+        setSelectedElementIds([])
+        setSelectedRungId(rungId)
       }
     }
 
@@ -346,15 +519,17 @@ export function LadderEditor({
 
   const handleNodesDelete = (
     rungId: string,
-    deletedNodes: Array<Node<LadderNodeData>>,
+    deletedNodes: Array<Node<LadderNodeData | RailNodeData>>,
   ) => {
     if (!canEdit) {
       return
     }
 
+    const deletedElementNodes = deletedNodes.filter((node) => !isRailId(node.id))
+
     clearSelection()
     setProject((currentProject) =>
-      deletedNodes.reduce(
+      deletedElementNodes.reduce(
         (nextProject, node) =>
           removeElement(nextProject, rungId, node.id, { reconnect: false }),
         currentProject,
@@ -397,12 +572,39 @@ export function LadderEditor({
       y: event.clientY - bounds.top,
     }
     const droppedPosition = flowPosition ?? fallbackPosition
-    const position = {
+    const position = snapPosition({
       x: Math.max(0, droppedPosition.x - 64),
       y: Math.max(0, droppedPosition.y - 22),
-    }
+    })
 
     handleAddElement(rungId, elementType, position)
+  }
+
+  const handleNodeClick = (
+    event: { ctrlKey?: boolean; metaKey?: boolean },
+    rungId: string,
+    nodeId: string,
+  ) => {
+    if (isRailId(nodeId)) {
+      return
+    }
+
+    if (simulationStatus === 'RUN') {
+      toggleInputElement(nodeId)
+      return
+    }
+
+    setSelectedRungId(rungId)
+    setSelectedEdgeIds([])
+    setSelectedElementIds((currentElementIds) => {
+      if (event.ctrlKey || event.metaKey) {
+        return currentElementIds.includes(nodeId)
+          ? currentElementIds.filter((elementId) => elementId !== nodeId)
+          : [...currentElementIds, nodeId]
+      }
+
+      return [nodeId]
+    })
   }
 
   const projectRungs = useMemo(
@@ -412,7 +614,7 @@ export function LadderEditor({
         nodes: mapRungToNodes(
           rung,
           project,
-          selectedElementId,
+          selectedElementIds,
           simulationStatus,
           simulationState,
           t,
@@ -421,7 +623,7 @@ export function LadderEditor({
       })),
     [
       project,
-      selectedElementId,
+      selectedElementIds,
       selectedEdgeIds,
       simulationState,
       simulationStatus,
@@ -444,15 +646,16 @@ export function LadderEditor({
       <div className="ladder-canvas" aria-label={t('ladderEditor')}>
         {projectRungs.map(({ rung, nodes, edges }) => (
           <div key={rung.id} className="ladder-rung">
-            <div className="ladder-rung__rail ladder-rung__rail--left" />
-            <div className="ladder-rung__rail ladder-rung__rail--right" />
-            <div className="ladder-rung__start-line" />
-            <div className="ladder-rung__end-line" />
-
             <div className="ladder-rung__meta">
               <span className="ladder-rung__number">
                 {String(rung.number).padStart(3, '0')}
               </span>
+              <span className="ladder-rung__title">
+                {rung.title || t('rungUntitled')}
+              </span>
+              {rung.breakpoint && (
+                <span className="breakpoint-badge">BP</span>
+              )}
               {canEdit && (
                 <button
                   type="button"
@@ -471,6 +674,11 @@ export function LadderEditor({
               onDragOver={handleDragOver}
               onDrop={(event) => handleDrop(rung.id, event)}
             >
+              {rung.elements.length === 0 && canEdit && (
+                <div className="rung-empty-state">
+                  {t('emptyRungHint')}
+                </div>
+              )}
               <ReactFlow
                 nodes={nodes}
                 edges={edges}
@@ -485,16 +693,10 @@ export function LadderEditor({
                 zoomOnPinch={canEdit}
                 preventScrolling={false}
                 deleteKeyCode={canEdit ? ['Backspace', 'Delete'] : null}
+                multiSelectionKeyCode={['Shift', 'Control', 'Meta']}
                 onNodeClick={(event, node) => {
                   event.stopPropagation()
-
-                  if (simulationStatus === 'RUN') {
-                    toggleInputElement(node.id)
-                    return
-                  }
-
-                  setSelectedElementId(node.id)
-                  setSelectedEdgeIds([])
+                  handleNodeClick(event, rung.id, node.id)
                 }}
                 onEdgeClick={(event, edge) => {
                   event.stopPropagation()
@@ -504,11 +706,13 @@ export function LadderEditor({
                   }
 
                   setSelectedEdgeIds([edge.id])
-                  setSelectedElementId(null)
+                  setSelectedElementIds([])
+                  setSelectedRungId(rung.id)
                 }}
                 onPaneClick={() => {
                   if (canEdit) {
                     clearSelection()
+                    setSelectedRungId(rung.id)
                   }
                 }}
                 onNodesChange={handleNodesChange}
@@ -528,9 +732,9 @@ export function LadderEditor({
                   handleEdgesDelete(rung.id, deletedEdges)
                 }
                 fitView
-                fitViewOptions={{ padding: 0.25 }}
+                fitViewOptions={{ padding: 0.22 }}
               >
-                <Background gap={28} size={1} color="#d6dde5" />
+                <Background gap={20} size={1} color="#d6dde5" />
                 <Controls showInteractive={false} />
               </ReactFlow>
             </div>
@@ -546,13 +750,13 @@ export function LadderEditor({
                 ) : (
                   rung.connections.map((connection) => (
                     <span key={connection.id}>
-                      {getElementDebugName(
+                      {getEndpointDebugName(
                         connection.fromElementId,
                         rung.elements,
                         project,
                       )}
                       {' -> '}
-                      {getElementDebugName(
+                      {getEndpointDebugName(
                         connection.toElementId,
                         rung.elements,
                         project,
@@ -582,8 +786,11 @@ export function LadderEditor({
         project={project}
         setProject={setProject}
         simulationStatus={simulationStatus}
-        selectedElementId={selectedElementId}
+        selectedElementId={
+          selectedElementIds.length === 1 ? selectedElementIds[0] : null
+        }
         selectedEdgeId={selectedEdgeIds[0] ?? null}
+        selectedRungId={selectedRungId}
         onClearSelection={clearSelection}
         t={t}
       />

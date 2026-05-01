@@ -13,8 +13,15 @@ type TopBarProps = {
   onNewProject: () => void
   onOpenProject: () => void
   onSaveProject: () => void
+  onExportStructuredText: () => void
+  onUndo: () => void
+  onRedo: () => void
+  canUndo: boolean
+  canRedo: boolean
   onRunSimulation: () => void
   onStopSimulation: () => void
+  onStepScan: () => void
+  onResetSimulation: () => void
 }
 
 export function TopBar({
@@ -28,8 +35,15 @@ export function TopBar({
   onNewProject,
   onOpenProject,
   onSaveProject,
+  onExportStructuredText,
+  onUndo,
+  onRedo,
+  canUndo,
+  canRedo,
   onRunSimulation,
   onStopSimulation,
+  onStepScan,
+  onResetSimulation,
 }: TopBarProps) {
   const handleAbout = () => {
     window.alert(t('aboutMessage'))
@@ -60,6 +74,21 @@ export function TopBar({
             <button type="button" onClick={onSaveProject}>
               {t('save')}
             </button>
+            <button type="button" onClick={onExportStructuredText}>
+              {t('exportSt')}
+            </button>
+          </div>
+        </details>
+
+        <details className="app-menu__group">
+          <summary>{t('edit')}</summary>
+          <div className="app-menu__items">
+            <button type="button" disabled={!canUndo} onClick={onUndo}>
+              {t('undo')}
+            </button>
+            <button type="button" disabled={!canRedo} onClick={onRedo}>
+              {t('redo')}
+            </button>
           </div>
         </details>
 
@@ -71,6 +100,12 @@ export function TopBar({
             </button>
             <button type="button" onClick={onStopSimulation}>
               {t('stop')}
+            </button>
+            <button type="button" onClick={onStepScan}>
+              {t('stepScan')}
+            </button>
+            <button type="button" onClick={onResetSimulation}>
+              {t('resetSimulation')}
             </button>
           </div>
         </details>

@@ -376,6 +376,24 @@
   font-size: 12px;
 }
 
+.ladder-rung__title {
+  max-width: 220px;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.breakpoint-badge {
+  border: 1px solid var(--danger);
+  border-radius: 999px;
+  color: var(--danger);
+  font-family: var(--mono);
+  font-size: 10px;
+  padding: 2px 6px;
+}
+
 .ladder-line {
   grid-column: 2;
   grid-row: 1;
@@ -426,6 +444,48 @@
   border-color: var(--border);
   background: var(--panel-bg);
   color: var(--text);
+}
+
+.rail-node {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 128px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel-bg);
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.rail-node::before {
+  content: '';
+  position: absolute;
+  top: 10px;
+  bottom: 10px;
+  left: 50%;
+  width: 4px;
+  border-radius: 999px;
+  background: var(--ladder-line);
+  transform: translateX(-50%);
+}
+
+.rail-node span {
+  position: relative;
+  z-index: 1;
+  border-radius: 4px;
+  background: var(--panel-bg);
+  padding: 2px 4px;
+}
+
+.rail-node .react-flow__handle {
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--panel-bg);
+  background: var(--accent);
 }
 
 .ladder-flow-node {
@@ -573,6 +633,19 @@
   font-weight: 700;
 }
 
+.rung-empty-state {
+  position: absolute;
+  inset: 16px;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 13px;
+  pointer-events: none;
+}
+
 .rung-element-editor {
   grid-column: 2;
   grid-row: 2;
@@ -697,6 +770,23 @@
   flex-wrap: wrap;
 }
 
+.properties-grid__wide {
+  min-width: min(360px, 100%);
+  flex: 1;
+}
+
+.properties-check {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 8px !important;
+  min-height: 34px;
+}
+
+.properties-check input {
+  min-width: auto !important;
+  width: auto;
+}
+
 .properties-grid label,
 .properties-timer label {
   display: grid;
@@ -753,6 +843,48 @@
 
 .simulation-summary__status--stop {
   color: var(--danger);
+}
+
+.debug-panel {
+  margin: 0 16px 16px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--canvas-bg);
+}
+
+.panel__header--compact {
+  padding: 10px 12px;
+}
+
+.panel__header--compact h3 {
+  margin: 0;
+  font-size: 13px;
+}
+
+.debug-panel__grid {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px 12px;
+  margin: 0;
+  padding: 12px;
+  font-size: 12px;
+}
+
+.debug-panel__grid dt {
+  color: var(--muted);
+}
+
+.debug-panel__grid dd {
+  margin: 0;
+  font-family: var(--mono);
+}
+
+.debug-panel__breakpoint {
+  margin: 0;
+  border-top: 1px solid var(--border);
+  color: var(--danger);
+  padding: 10px 12px;
+  font-size: 12px;
 }
 
 .signal-list {
@@ -842,6 +974,14 @@ th {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+}
+
+.variable-add-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .variable-field,

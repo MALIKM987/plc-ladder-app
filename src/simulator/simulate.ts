@@ -1,3 +1,4 @@
+import { LEFT_RAIL_ID, RIGHT_RAIL_ID } from '../constants/rails'
 import type { LadderElement, Project, Rung, Variable } from '../types/project'
 import type { SimulationState } from './simulationState'
 
@@ -7,6 +8,22 @@ type SimulationTrace = {
   activeElementIds: Set<string>
   activeConnectionIds: Set<string>
   coilValues: Record<string, boolean>
+  elementSignals: Record<string, boolean>
+  connectionSignals: Record<string, boolean>
+  breakpointRungId?: string
+}
+
+export type SimulationContext = {
+  variables: Map<string, Variable>
+  trace: SimulationTrace
+  scanDeltaMs: number
+  updatedTimerIds: Set<string>
+  updatedCounterIds: Set<string>
+  memo: Map<string, boolean>
+}
+
+type SimulationOptions = {
+  stopAtBreakpoint?: boolean
 }
 
 function cloneProject(project: Project): Project {
@@ -24,20 +41,179 @@ function cloneProject(project: Project): Project {
   }
 }
 
-function getVariable(
-  variablesById: Map<string, Variable>,
+function getVariable(context: SimulationContext, element: LadderElement) {
+  return context.variables.get(element.variableId)
+}
+
+function getPresetMs(variable: Variable) {
+  return Math.max(0, variable.presetMs ?? 1000)
+}
+
+function evaluateTimer(
   element: LadderElement,
+  inputSignal: boolean,
+  context: SimulationContext,
 ) {
-  return variablesById.get(element.variableId)
+  const variable = getVariable(context, element)
+
+  if (!variable || variable.type !== 'TIMER') {
+    return false
+  }
+
+  const alreadyUpdated = context.updatedTimerIds.has(variable.id)
+
+  if (alreadyUpdated) {
+    return variable.done ?? variable.value
+  }
+
+  context.updatedTimerIds.add(variable.id)
+
+  const presetMs = getPresetMs(variable)
+
+  if (element.type === 'TON') {
+    if (!inputSignal) {
+      variable.elapsedMs = 0
+      variable.done = false
+      variable.value = false
+      variable.previousInput = false
+      return false
+    }
+
+    const elapsedMs = Math.min(
+      presetMs,
+      (variable.elapsedMs ?? 0) + context.scanDeltaMs,
+    )
+    const done = elapsedMs >= presetMs
+
+    variable.presetMs = presetMs
+    variable.elapsedMs = elapsedMs
+    variable.done = done
+    variable.value = done
+    variable.previousInput = true
+    return done
+  }
+
+  if (element.type === 'TOF') {
+    variable.presetMs = presetMs
+
+    if (inputSignal) {
+      variable.elapsedMs = 0
+      variable.done = true
+      variable.value = true
+      variable.previousInput = true
+      return true
+    }
+
+    const wasOn = variable.done === true || variable.value === true
+
+    if (!wasOn) {
+      variable.elapsedMs = 0
+      variable.done = false
+      variable.value = false
+      variable.previousInput = false
+      return false
+    }
+
+    const elapsedMs = Math.min(
+      presetMs,
+      (variable.elapsedMs ?? 0) + context.scanDeltaMs,
+    )
+    const done = elapsedMs < presetMs
+
+    variable.elapsedMs = elapsedMs
+    variable.done = done
+    variable.value = done
+    variable.previousInput = false
+    return done
+  }
+
+  if (element.type === 'TP') {
+    const risingEdge = inputSignal && !variable.previousInput
+    const wasRunning = variable.done === true || variable.value === true
+
+    variable.presetMs = presetMs
+
+    if (risingEdge && !wasRunning) {
+      variable.elapsedMs = 0
+      variable.done = true
+      variable.value = true
+      variable.previousInput = inputSignal
+      return true
+    }
+
+    if (wasRunning) {
+      const elapsedMs = Math.min(
+        presetMs,
+        (variable.elapsedMs ?? 0) + context.scanDeltaMs,
+      )
+      const done = elapsedMs < presetMs
+
+      variable.elapsedMs = elapsedMs
+      variable.done = done
+      variable.value = done
+      variable.previousInput = inputSignal
+      return done
+    }
+
+    variable.elapsedMs = 0
+    variable.done = false
+    variable.value = false
+    variable.previousInput = inputSignal
+    return false
+  }
+
+  return false
+}
+
+function evaluateCounter(
+  element: LadderElement,
+  inputSignal: boolean,
+  context: SimulationContext,
+) {
+  const variable = getVariable(context, element)
+
+  if (!variable || variable.type !== 'COUNTER') {
+    return false
+  }
+
+  const alreadyUpdated = context.updatedCounterIds.has(variable.id)
+
+  if (alreadyUpdated) {
+    return variable.done ?? variable.value
+  }
+
+  context.updatedCounterIds.add(variable.id)
+
+  const preset = Math.max(0, variable.preset ?? 3)
+  const currentCount = variable.count ?? 0
+  const risingEdge = inputSignal && !variable.previousInput
+  let nextCount = currentCount
+
+  if (risingEdge && element.type === 'CTU') {
+    nextCount += 1
+  }
+
+  if (risingEdge && element.type === 'CTD') {
+    nextCount -= 1
+  }
+
+  const done = element.type === 'CTD' ? nextCount <= 0 : nextCount >= preset
+
+  variable.preset = preset
+  variable.count = nextCount
+  variable.done = done
+  variable.value = done
+  variable.previousInput = inputSignal
+
+  return done
 }
 
 function evaluateElementSignal(
   element: LadderElement,
   inputSignal: boolean,
-  variables: Map<string, Variable>,
-  scanDeltaMs: number,
+  context: SimulationContext,
 ) {
-  const variable = getVariable(variables, element)
+  const variable = getVariable(context, element)
 
   if (element.type === 'NO_CONTACT') {
     return inputSignal && variable?.value === true
@@ -47,31 +223,40 @@ function evaluateElementSignal(
     return inputSignal && variable?.value === false
   }
 
-  if (element.type === 'TON') {
-    if (!variable || variable.type !== 'TIMER') {
-      return false
+  if (
+    element.type === 'TON' ||
+    element.type === 'TOF' ||
+    element.type === 'TP'
+  ) {
+    return evaluateTimer(element, inputSignal, context)
+  }
+
+  if (element.type === 'CTU' || element.type === 'CTD') {
+    return evaluateCounter(element, inputSignal, context)
+  }
+
+  if (element.type === 'COIL') {
+    if (variable && variable.type === 'BOOL') {
+      variable.value = inputSignal
     }
 
-    if (!inputSignal) {
-      variable.elapsedMs = 0
-      variable.done = false
+    return inputSignal
+  }
+
+  if (element.type === 'SET_COIL') {
+    if (inputSignal && variable && variable.type === 'BOOL') {
+      variable.value = true
+    }
+
+    return inputSignal
+  }
+
+  if (element.type === 'RESET_COIL') {
+    if (inputSignal && variable && variable.type === 'BOOL') {
       variable.value = false
-      return false
     }
 
-    const presetMs = variable.presetMs ?? 1000
-    const elapsedMs = Math.min(
-      presetMs,
-      (variable.elapsedMs ?? 0) + scanDeltaMs,
-    )
-    const done = elapsedMs >= presetMs
-
-    variable.presetMs = presetMs
-    variable.elapsedMs = elapsedMs
-    variable.done = done
-    variable.value = done
-
-    return done
+    return inputSignal
   }
 
   return inputSignal
@@ -80,17 +265,15 @@ function evaluateElementSignal(
 export function evaluateElement(
   elementId: string,
   rung: Rung,
-  variables: Map<string, Variable>,
+  context: SimulationContext,
   visited: Set<string>,
-  memo = new Map<string, boolean>(),
-  trace?: SimulationTrace,
-  scanDeltaMs = DEFAULT_SCAN_DELTA_MS,
 ): boolean {
-  if (memo.has(elementId)) {
-    return memo.get(elementId) ?? false
+  if (context.memo.has(elementId)) {
+    return context.memo.get(elementId) ?? false
   }
 
   if (visited.has(elementId)) {
+    context.trace.elementSignals[elementId] = false
     return false
   }
 
@@ -105,75 +288,97 @@ export function evaluateElement(
   const incomingConnections = rung.connections.filter(
     (connection) => connection.toElementId === elementId,
   )
-  let inputSignal = incomingConnections.length === 0
+  let inputSignal = false
 
   for (const connection of incomingConnections) {
-    const parentResult = evaluateElement(
-      connection.fromElementId,
-      rung,
-      variables,
-      visited,
-      memo,
-      trace,
-      scanDeltaMs,
-    )
+    const parentResult =
+      connection.fromElementId === LEFT_RAIL_ID
+        ? true
+        : evaluateElement(connection.fromElementId, rung, context, visited)
+
+    context.trace.connectionSignals[connection.id] = parentResult
 
     if (parentResult) {
       inputSignal = true
-      trace?.activeConnectionIds.add(connection.id)
+      context.trace.activeConnectionIds.add(connection.id)
     }
   }
 
-  const result = evaluateElementSignal(
-    element,
-    inputSignal,
-    variables,
-    scanDeltaMs,
-  )
+  const result = evaluateElementSignal(element, inputSignal, context)
 
-  if (result || (element.type === 'TON' && inputSignal)) {
-    trace?.activeElementIds.add(element.id)
+  context.trace.elementSignals[element.id] = result
+
+  if (
+    result ||
+    ((element.type === 'TON' ||
+      element.type === 'TOF' ||
+      element.type === 'TP' ||
+      element.type === 'CTU' ||
+      element.type === 'CTD') &&
+      inputSignal)
+  ) {
+    context.trace.activeElementIds.add(element.id)
+  }
+
+  if (
+    element.type === 'COIL' ||
+    element.type === 'SET_COIL' ||
+    element.type === 'RESET_COIL'
+  ) {
+    context.trace.coilValues[element.id] = result
   }
 
   visited.delete(elementId)
-  memo.set(elementId, result)
+  context.memo.set(elementId, result)
 
   return result
 }
 
-export function evaluateRung(
-  rung: Rung,
-  variables: Map<string, Variable>,
-  trace?: SimulationTrace,
-  scanDeltaMs = DEFAULT_SCAN_DELTA_MS,
-) {
-  let rungResult = false
-  const outputElements = rung.elements.filter(
-    (element) => element.type === 'COIL' || element.type === 'TON',
-  )
-  const memo = new Map<string, boolean>()
+function getRungEvaluationTargets(rung: Rung) {
+  const targets = new Set<string>()
 
-  for (const outputElement of outputElements) {
-    const result = evaluateElement(
-      outputElement.id,
-      rung,
-      variables,
-      new Set(),
-      memo,
-      trace,
-      scanDeltaMs,
-    )
-
-    if (outputElement.type === 'COIL') {
-      const variable = getVariable(variables, outputElement)
-
-      if (variable) {
-        variable.value = result
-      }
+  for (const element of rung.elements) {
+    if (
+      element.type === 'COIL' ||
+      element.type === 'SET_COIL' ||
+      element.type === 'RESET_COIL'
+    ) {
+      targets.add(element.id)
     }
+  }
 
-    if (trace && outputElement.type === 'COIL') {
-      trace.coilValues[outputElement.id] = result
+  for (const connection of rung.connections) {
+    if (connection.toElementId === RIGHT_RAIL_ID) {
+      targets.add(connection.fromElementId)
+    }
+  }
+
+  return [...targets].filter(
+    (elementId) =>
+      elementId !== LEFT_RAIL_ID &&
+      elementId !== RIGHT_RAIL_ID &&
+      rung.elements.some((element) => element.id === elementId),
+  )
+}
+
+export function evaluateRung(rung: Rung, context: SimulationContext) {
+  let rungResult = false
+  const targets = getRungEvaluationTargets(rung)
+
+  for (const targetElementId of targets) {
+    const result = evaluateElement(targetElementId, rung, context, new Set())
+
+    for (const connection of rung.connections) {
+      if (
+        connection.fromElementId === targetElementId &&
+        connection.toElementId === RIGHT_RAIL_ID
+      ) {
+        context.trace.connectionSignals[connection.id] = result
+
+        if (result) {
+          context.trace.activeConnectionIds.add(connection.id)
+        }
+      }
     }
 
     rungResult = rungResult || result
@@ -185,22 +390,37 @@ export function evaluateRung(
 export function simulateProjectWithState(
   project: Project,
   scanDeltaMs = DEFAULT_SCAN_DELTA_MS,
+  options: SimulationOptions = {},
 ): {
   project: Project
   state: SimulationState
 } {
   const nextProject = cloneProject(project)
-  const variablesById = new Map(
-    nextProject.variables.map((variable) => [variable.id, variable]),
-  )
   const trace: SimulationTrace = {
     activeElementIds: new Set(),
     activeConnectionIds: new Set(),
     coilValues: {},
+    elementSignals: {},
+    connectionSignals: {},
+  }
+  const context: SimulationContext = {
+    variables: new Map(
+      nextProject.variables.map((variable) => [variable.id, variable]),
+    ),
+    trace,
+    scanDeltaMs,
+    updatedTimerIds: new Set(),
+    updatedCounterIds: new Set(),
+    memo: new Map(),
   }
 
   for (const rung of nextProject.rungs) {
-    evaluateRung(rung, variablesById, trace, scanDeltaMs)
+    if (options.stopAtBreakpoint && rung.breakpoint) {
+      trace.breakpointRungId = rung.id
+      break
+    }
+
+    evaluateRung(rung, context)
   }
 
   return {
@@ -209,6 +429,9 @@ export function simulateProjectWithState(
       activeElementIds: [...trace.activeElementIds],
       activeConnectionIds: [...trace.activeConnectionIds],
       coilValues: trace.coilValues,
+      elementSignals: trace.elementSignals,
+      connectionSignals: trace.connectionSignals,
+      breakpointRungId: trace.breakpointRungId,
     },
   }
 }

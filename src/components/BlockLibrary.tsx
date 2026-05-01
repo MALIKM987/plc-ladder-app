@@ -28,11 +28,30 @@ const blockGroups: BlockGroup[] = [
   },
   {
     titleKey: 'coils',
-    items: [{ type: 'COIL', labelKey: 'coil', helpKey: 'coilHelp' }],
+    items: [
+      { type: 'COIL', labelKey: 'coil', helpKey: 'coilHelp' },
+      { type: 'SET_COIL', labelKey: 'setCoil', helpKey: 'setCoilHelp' },
+      {
+        type: 'RESET_COIL',
+        labelKey: 'resetCoil',
+        helpKey: 'resetCoilHelp',
+      },
+    ],
   },
   {
-    titleKey: 'functions',
-    items: [{ type: 'TON', labelKey: 'ton', helpKey: 'tonHelp' }],
+    titleKey: 'timers',
+    items: [
+      { type: 'TON', labelKey: 'ton', helpKey: 'tonHelp' },
+      { type: 'TOF', labelKey: 'tof', helpKey: 'tofHelp' },
+      { type: 'TP', labelKey: 'tp', helpKey: 'tpHelp' },
+    ],
+  },
+  {
+    titleKey: 'counters',
+    items: [
+      { type: 'CTU', labelKey: 'ctu', helpKey: 'ctuHelp' },
+      { type: 'CTD', labelKey: 'ctd', helpKey: 'ctdHelp' },
+    ],
   },
 ]
 

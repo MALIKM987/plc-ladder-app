@@ -1,7 +1,9 @@
 import type { Dispatch, SetStateAction } from 'react'
 import type { TranslationKey } from '../i18n/translations'
 import {
-  addVariable,
+  createBoolVariable,
+  createCounterVariable,
+  createTimerVariable,
   removeVariable,
   updateVariable,
 } from '../project/projectActions'
@@ -14,7 +16,7 @@ type VariableTableProps = {
   t: (key: TranslationKey) => string
 }
 
-const VARIABLE_TYPES: Variable['type'][] = ['BOOL', 'TIMER']
+const VARIABLE_TYPES: Variable['type'][] = ['BOOL', 'TIMER', 'COUNTER']
 
 function canEditValue(variable: Variable) {
   return (
@@ -36,14 +38,6 @@ export function VariableTable({
   t,
 }: VariableTableProps) {
   const readOnly = simulationStatus === 'RUN'
-
-  const handleAddVariable = () => {
-    if (readOnly) {
-      return
-    }
-
-    setProject((currentProject) => addVariable(currentProject))
-  }
 
   const handleRemoveVariable = (variableId: string) => {
     if (readOnly) {
@@ -71,24 +65,56 @@ export function VariableTable({
     )
   }
 
-  const handlePresetChange = (variableId: string, presetValue: string) => {
-    const presetMs = Math.max(0, Number(presetValue) || 0)
-
-    handleVariableChange(variableId, { presetMs })
+  const handleNumberChange = (
+    variableId: string,
+    key: 'presetMs' | 'preset' | 'count',
+    value: string,
+  ) => {
+    handleVariableChange(variableId, {
+      [key]: Math.max(0, Number(value) || 0),
+    })
   }
 
   return (
     <section className="variables" aria-labelledby="variables-title">
       <div className="panel__header variables__header">
         <h2 id="variables-title">{t('variableTable')}</h2>
-        <button
-          type="button"
-          className="variable-add-button"
-          disabled={readOnly}
-          onClick={handleAddVariable}
-        >
-          {t('addVariable')}
-        </button>
+        <div className="variable-add-group">
+          <button
+            type="button"
+            className="variable-add-button"
+            disabled={readOnly}
+            onClick={() =>
+              setProject((currentProject) => createBoolVariable(currentProject))
+            }
+          >
+            {t('addBoolVariable')}
+          </button>
+          <button
+            type="button"
+            className="variable-add-button"
+            disabled={readOnly}
+            onClick={() =>
+              setProject((currentProject) =>
+                createTimerVariable(currentProject),
+              )
+            }
+          >
+            {t('addTimerVariable')}
+          </button>
+          <button
+            type="button"
+            className="variable-add-button"
+            disabled={readOnly}
+            onClick={() =>
+              setProject((currentProject) =>
+                createCounterVariable(currentProject),
+              )
+            }
+          >
+            {t('addCounterVariable')}
+          </button>
+        </div>
       </div>
 
       <div className="table-wrap">
@@ -154,7 +180,7 @@ export function VariableTable({
                     />
                   </td>
                   <td>
-                    {variable.type === 'TIMER' ? (
+                    {variable.type === 'TIMER' && (
                       <div className="timer-variable-fields">
                         <label>
                           PT
@@ -165,8 +191,9 @@ export function VariableTable({
                             value={variable.presetMs ?? 1000}
                             disabled={readOnly}
                             onChange={(event) =>
-                              handlePresetChange(
+                              handleNumberChange(
                                 variable.id,
+                                'presetMs',
                                 event.target.value,
                               )
                             }
@@ -176,15 +203,54 @@ export function VariableTable({
                           ET <code>{variable.elapsedMs ?? 0} ms</code>
                         </span>
                         <span>
-                          Q{' '}
-                          <code>
-                            {variable.done || variable.value
-                              ? 'TRUE'
-                              : 'FALSE'}
-                          </code>
+                          Q <code>{variable.done ? 'TRUE' : 'FALSE'}</code>
                         </span>
                       </div>
-                    ) : (
+                    )}
+
+                    {variable.type === 'COUNTER' && (
+                      <div className="timer-variable-fields">
+                        <label>
+                          PV
+                          <input
+                            className="variable-field variable-field--number"
+                            type="number"
+                            min="0"
+                            value={variable.preset ?? 3}
+                            disabled={readOnly}
+                            onChange={(event) =>
+                              handleNumberChange(
+                                variable.id,
+                                'preset',
+                                event.target.value,
+                              )
+                            }
+                          />
+                        </label>
+                        <label>
+                          CV
+                          <input
+                            className="variable-field variable-field--number"
+                            type="number"
+                            min="0"
+                            value={variable.count ?? 0}
+                            disabled={readOnly}
+                            onChange={(event) =>
+                              handleNumberChange(
+                                variable.id,
+                                'count',
+                                event.target.value,
+                              )
+                            }
+                          />
+                        </label>
+                        <span>
+                          Q <code>{variable.done ? 'TRUE' : 'FALSE'}</code>
+                        </span>
+                      </div>
+                    )}
+
+                    {variable.type === 'BOOL' && (
                       <button
                         type="button"
                         className="variable-value-button"

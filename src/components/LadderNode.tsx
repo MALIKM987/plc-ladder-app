@@ -10,6 +10,9 @@ export type LadderNodeData = {
   timerPresetMs?: number
   timerElapsedMs?: number
   timerDone?: boolean
+  counterPreset?: number
+  counterCount?: number
+  counterDone?: boolean
 }
 
 function getNodeLabel(type: ElementType, variableName: string) {
@@ -21,8 +24,20 @@ function getNodeLabel(type: ElementType, variableName: string) {
     return `( ) ${variableName}`
   }
 
-  if (type === 'TON') {
-    return `TON ${variableName}`
+  if (type === 'SET_COIL') {
+    return `(S) ${variableName}`
+  }
+
+  if (type === 'RESET_COIL') {
+    return `(R) ${variableName}`
+  }
+
+  if (type === 'TON' || type === 'TOF' || type === 'TP') {
+    return `${type} ${variableName}`
+  }
+
+  if (type === 'CTU' || type === 'CTD') {
+    return `${type} ${variableName}`
   }
 
   return `| | ${variableName}`
@@ -42,6 +57,12 @@ export function LadderNode({
   ]
     .filter(Boolean)
     .join(' ')
+  const timerNode =
+    data.elementType === 'TON' ||
+    data.elementType === 'TOF' ||
+    data.elementType === 'TP'
+  const counterNode =
+    data.elementType === 'CTU' || data.elementType === 'CTD'
 
   return (
     <div
@@ -57,11 +78,18 @@ export function LadderNode({
       <span className="ladder-flow-node__label">
         {getNodeLabel(data.elementType, data.variableName)}
       </span>
-      {data.elementType === 'TON' && (
+      {timerNode && (
         <span className="ladder-flow-node__details">
           <span>PT: {data.timerPresetMs ?? 0}ms</span>
           <span>ET: {data.timerElapsedMs ?? 0}ms</span>
           <span>Q: {data.timerDone ? 'TRUE' : 'FALSE'}</span>
+        </span>
+      )}
+      {counterNode && (
+        <span className="ladder-flow-node__details">
+          <span>PV: {data.counterPreset ?? 0}</span>
+          <span>CV: {data.counterCount ?? 0}</span>
+          <span>Q: {data.counterDone ? 'TRUE' : 'FALSE'}</span>
         </span>
       )}
       <Handle

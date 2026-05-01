@@ -1,17 +1,30 @@
+import { LEFT_RAIL_ID, RIGHT_RAIL_ID, isRailId } from '../constants/rails'
 import type {
+  Connection,
   ElementType,
   LadderElement,
   Project,
   Rung,
   Variable,
+  VariableType,
 } from '../types/project'
 
-const ELEMENT_SPACING = 150
+const ELEMENT_SPACING = 160
 const FIRST_ELEMENT_X = 120
 const FIRST_TIMER_INDEX = 1
+const FIRST_COUNTER_INDEX = 1
+const DEFAULT_NODE_Y = 70
+export const GRID_SIZE = 20
 
-function createId(prefix: string) {
+export function createId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+export function snapPosition(position: { x: number; y: number }) {
+  return {
+    x: Math.max(0, Math.round(position.x / GRID_SIZE) * GRID_SIZE),
+    y: Math.max(0, Math.round(position.y / GRID_SIZE) * GRID_SIZE),
+  }
 }
 
 function cloneElement(element: LadderElement): LadderElement {
@@ -27,6 +40,10 @@ function cloneRung(rung: Rung): Rung {
     elements: rung.elements.map(cloneElement),
     connections: rung.connections.map((connection) => ({ ...connection })),
   }
+}
+
+function cloneVariable(variable: Variable): Variable {
+  return { ...variable }
 }
 
 function getNextElementX(rung: Rung) {
@@ -46,22 +63,44 @@ function getLastElement(rung: Rung) {
   )[rung.elements.length - 1]
 }
 
+export function isTimerElement(elementType: ElementType) {
+  return elementType === 'TON' || elementType === 'TOF' || elementType === 'TP'
+}
+
+export function isCounterElement(elementType: ElementType) {
+  return elementType === 'CTU' || elementType === 'CTD'
+}
+
+export function isOutputOnlyElement(elementType: ElementType) {
+  return (
+    elementType === 'COIL' ||
+    elementType === 'SET_COIL' ||
+    elementType === 'RESET_COIL'
+  )
+}
+
+export function getRequiredVariableType(
+  elementType: ElementType,
+): VariableType {
+  if (isTimerElement(elementType)) {
+    return 'TIMER'
+  }
+
+  if (isCounterElement(elementType)) {
+    return 'COUNTER'
+  }
+
+  return 'BOOL'
+}
+
 function getDefaultVariableId(project: Project, elementType: ElementType) {
-  const preferredType = elementType === 'TON' ? 'TIMER' : 'BOOL'
+  const preferredType = getRequiredVariableType(elementType)
 
   return (
     project.variables.find((variable) => variable.type === preferredType)?.id ??
     project.variables[0]?.id ??
     ''
   )
-}
-
-function elementUsesTimer(elementType: ElementType) {
-  return elementType === 'TON'
-}
-
-function cloneVariable(variable: Variable): Variable {
-  return { ...variable }
 }
 
 function isVariableUsed(project: Project, variableId: string) {
@@ -123,6 +162,30 @@ function getUniqueTimerAddress(project: Project) {
   return `%T${index}`
 }
 
+function getUniqueCounterName(project: Project) {
+  const names = new Set(project.variables.map((variable) => variable.name))
+  let index = FIRST_COUNTER_INDEX
+
+  while (names.has(`Counter${index}`)) {
+    index += 1
+  }
+
+  return `Counter${index}`
+}
+
+function getUniqueCounterAddress(project: Project) {
+  const addresses = new Set(
+    project.variables.map((variable) => variable.address),
+  )
+  let index = FIRST_COUNTER_INDEX
+
+  while (addresses.has(`%C${index}`)) {
+    index += 1
+  }
+
+  return `%C${index}`
+}
+
 function buildBoolVariable(project: Project): Variable {
   return {
     id: createId('variable'),
@@ -143,6 +206,21 @@ function buildTimerVariable(project: Project): Variable {
     presetMs: 1000,
     elapsedMs: 0,
     done: false,
+    previousInput: false,
+  }
+}
+
+function buildCounterVariable(project: Project): Variable {
+  return {
+    id: createId('variable'),
+    name: getUniqueCounterName(project),
+    address: getUniqueCounterAddress(project),
+    type: 'COUNTER',
+    value: false,
+    preset: 3,
+    count: 0,
+    done: false,
+    previousInput: false,
   }
 }
 
@@ -150,7 +228,7 @@ function ensureVariableForElement(
   project: Project,
   elementType: ElementType,
 ): { project: Project; variableId: string } {
-  const expectedType = elementUsesTimer(elementType) ? 'TIMER' : 'BOOL'
+  const expectedType = getRequiredVariableType(elementType)
   const existingVariable = project.variables.find(
     (variable) => variable.type === expectedType,
   )
@@ -162,13 +240,19 @@ function ensureVariableForElement(
   const nextProject =
     expectedType === 'TIMER'
       ? createTimerVariable(project)
-      : createBoolVariable(project)
+      : expectedType === 'COUNTER'
+        ? createCounterVariable(project)
+        : createBoolVariable(project)
   const createdVariable = nextProject.variables[nextProject.variables.length - 1]
 
   return {
     project: nextProject,
     variableId: createdVariable?.id ?? '',
   }
+}
+
+function getNodeIdsForCycleCheck(rung: Rung) {
+  return [LEFT_RAIL_ID, RIGHT_RAIL_ID, ...rung.elements.map((element) => element.id)]
 }
 
 export function wouldCreateCycle(
@@ -182,8 +266,8 @@ export function wouldCreateCycle(
 
   const outgoingByElementId = new Map<string, string[]>()
 
-  for (const element of rung.elements) {
-    outgoingByElementId.set(element.id, [])
+  for (const elementId of getNodeIdsForCycleCheck(rung)) {
+    outgoingByElementId.set(elementId, [])
   }
 
   for (const connection of rung.connections) {
@@ -224,6 +308,9 @@ export function addRung(project: Project): Project {
       {
         id: createId('rung'),
         number: nextNumber,
+        title: '',
+        comment: '',
+        breakpoint: false,
         elements: [],
         connections: [],
       },
@@ -240,6 +327,50 @@ export function removeRung(project: Project, rungId: string): Project {
         ...cloneRung(rung),
         number: index + 1,
       })),
+  }
+}
+
+export function updateRung(
+  project: Project,
+  rungId: string,
+  patch: Partial<Pick<Rung, 'title' | 'comment' | 'breakpoint'>>,
+): Project {
+  return {
+    ...project,
+    variables: project.variables.map(cloneVariable),
+    rungs: project.rungs.map((rung) =>
+      rung.id === rungId ? { ...cloneRung(rung), ...patch } : cloneRung(rung),
+    ),
+  }
+}
+
+export function autoLayoutRung(project: Project, rungId: string): Project {
+  return {
+    ...project,
+    variables: project.variables.map(cloneVariable),
+    rungs: project.rungs.map((rung) => {
+      if (rung.id !== rungId) {
+        return cloneRung(rung)
+      }
+
+      const sortedElements = [...rung.elements].sort(
+        (first, second) => first.position.x - second.position.x,
+      )
+      const positionsById = new Map(
+        sortedElements.map((element, index) => [
+          element.id,
+          { x: FIRST_ELEMENT_X + index * ELEMENT_SPACING, y: DEFAULT_NODE_Y },
+        ]),
+      )
+
+      return {
+        ...cloneRung(rung),
+        elements: rung.elements.map((element) => ({
+          ...element,
+          position: positionsById.get(element.id) ?? { ...element.position },
+        })),
+      }
+    }),
   }
 }
 
@@ -264,6 +395,17 @@ export function createTimerVariable(project: Project): Project {
     variables: [
       ...project.variables.map(cloneVariable),
       buildTimerVariable(project),
+    ],
+    rungs: project.rungs.map(cloneRung),
+  }
+}
+
+export function createCounterVariable(project: Project): Project {
+  return {
+    ...project,
+    variables: [
+      ...project.variables.map(cloneVariable),
+      buildCounterVariable(project),
     ],
     rungs: project.rungs.map(cloneRung),
   }
@@ -310,8 +452,22 @@ function normalizeVariablePatch(
       type: 'TIMER',
       value: false,
       presetMs: patch.presetMs ?? variable.presetMs ?? 1000,
-      elapsedMs: 0,
-      done: false,
+      elapsedMs: patch.elapsedMs ?? 0,
+      done: patch.done ?? false,
+      previousInput: patch.previousInput ?? false,
+    }
+  }
+
+  if (patch.type === 'COUNTER') {
+    return {
+      ...variable,
+      ...patch,
+      type: 'COUNTER',
+      value: false,
+      preset: patch.preset ?? variable.preset ?? 3,
+      count: patch.count ?? variable.count ?? 0,
+      done: patch.done ?? false,
+      previousInput: patch.previousInput ?? false,
     }
   }
 
@@ -325,7 +481,10 @@ function normalizeVariablePatch(
 
     delete nextVariable.presetMs
     delete nextVariable.elapsedMs
+    delete nextVariable.preset
+    delete nextVariable.count
     delete nextVariable.done
+    delete nextVariable.previousInput
 
     return nextVariable
   }
@@ -362,25 +521,28 @@ export function addElement(
         id: options.id ?? createId('element'),
         type,
         variableId: defaultVariableId,
-        position: options.position ?? {
-          x: getNextElementX(rung),
-          y: 0,
-        },
+        position: snapPosition(
+          options.position ?? {
+            x: getNextElementX(rung),
+            y: DEFAULT_NODE_Y,
+          },
+        ),
       }
 
       return {
         ...clonedRung,
         elements: [...clonedRung.elements, newElement],
-        connections: lastElement && lastElement.type !== 'COIL'
-          ? [
-              ...clonedRung.connections,
-              {
-                id: createId('connection'),
-                fromElementId: lastElement.id,
-                toElementId: newElement.id,
-              },
-            ]
-          : clonedRung.connections,
+        connections:
+          lastElement && !isOutputOnlyElement(lastElement.type)
+            ? [
+                ...clonedRung.connections,
+                {
+                  id: createId('connection'),
+                  fromElementId: lastElement.id,
+                  toElementId: newElement.id,
+                },
+              ]
+            : clonedRung.connections,
       }
     }),
   }
@@ -433,7 +595,11 @@ export function removeElement(
         options.reconnect !== false &&
         incomingConnection &&
         outgoingConnection &&
+        incomingConnection.toElementId !== RIGHT_RAIL_ID &&
+        outgoingConnection.fromElementId !== LEFT_RAIL_ID &&
         reconnectFromElement?.type !== 'COIL' &&
+        reconnectFromElement?.type !== 'SET_COIL' &&
+        reconnectFromElement?.type !== 'RESET_COIL' &&
         incomingConnection.fromElementId !== outgoingConnection.toElementId &&
         !reconnectExists &&
         !wouldCreateCycle(
@@ -486,6 +652,8 @@ export function updateElementPosition(
   elementId: string,
   position: { x: number; y: number },
 ): Project {
+  const snappedPosition = snapPosition(position)
+
   return {
     ...project,
     rungs: project.rungs.map((rung) => ({
@@ -494,7 +662,7 @@ export function updateElementPosition(
         element.id === elementId
           ? {
               ...element,
-              position: { ...position },
+              position: { ...snappedPosition },
             }
           : cloneElement(element),
       ),
@@ -509,7 +677,12 @@ export function addConnection(
   fromElementId: string,
   toElementId: string,
 ): Project {
-  if (fromElementId === toElementId) {
+  if (
+    fromElementId === toElementId ||
+    (fromElementId === LEFT_RAIL_ID && toElementId === RIGHT_RAIL_ID) ||
+    fromElementId === RIGHT_RAIL_ID ||
+    toElementId === LEFT_RAIL_ID
+  ) {
     return project
   }
 
@@ -531,12 +704,14 @@ export function addConnection(
       const toElement = rung.elements.find(
         (element) => element.id === toElementId,
       )
+      const sourceValid = fromElementId === LEFT_RAIL_ID || Boolean(fromElement)
+      const targetValid = toElementId === RIGHT_RAIL_ID || Boolean(toElement)
 
       if (
-        !fromElement ||
-        !toElement ||
-        fromElement.type === 'COIL' ||
+        !sourceValid ||
+        !targetValid ||
         connectionExists ||
+        (fromElement && isOutputOnlyElement(fromElement.type) && toElementId !== RIGHT_RAIL_ID) ||
         wouldCreateCycle(rung, fromElementId, toElementId)
       ) {
         return cloneRung(rung)
@@ -578,4 +753,71 @@ export function removeConnection(
       }
     }),
   }
+}
+
+export function addElementsToRung(
+  project: Project,
+  rungId: string,
+  elements: LadderElement[],
+  connections: Connection[],
+): Project {
+  return {
+    ...project,
+    variables: project.variables.map(cloneVariable),
+    rungs: project.rungs.map((rung) => {
+      if (rung.id !== rungId) {
+        return cloneRung(rung)
+      }
+
+      return {
+        ...cloneRung(rung),
+        elements: [...rung.elements.map(cloneElement), ...elements.map(cloneElement)],
+        connections: [
+          ...rung.connections.map((connection) => ({ ...connection })),
+          ...connections.map((connection) => ({ ...connection })),
+        ],
+      }
+    }),
+  }
+}
+
+export function resetSimulationProject(project: Project): Project {
+  return {
+    ...project,
+    variables: project.variables.map((variable) => {
+      if (variable.type === 'TIMER') {
+        return {
+          ...variable,
+          value: false,
+          elapsedMs: 0,
+          done: false,
+          previousInput: false,
+        }
+      }
+
+      if (variable.type === 'COUNTER') {
+        return {
+          ...variable,
+          value: false,
+          count: 0,
+          done: false,
+          previousInput: false,
+        }
+      }
+
+      if (variable.address.startsWith('%Q') || variable.address.startsWith('%M')) {
+        return { ...variable, value: false }
+      }
+
+      return { ...variable }
+    }),
+    rungs: project.rungs.map(cloneRung),
+  }
+}
+
+export function connectionEndpointExists(rung: Rung, elementId: string) {
+  return (
+    isRailId(elementId) ||
+    rung.elements.some((element) => element.id === elementId)
+  )
 }

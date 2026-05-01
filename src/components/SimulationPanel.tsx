@@ -1,5 +1,6 @@
 import type { Dispatch, SetStateAction } from 'react'
 import type { TranslationKey } from '../i18n/translations'
+import type { SimulationState } from '../simulator/simulationState'
 import type { Project, Variable } from '../types/project'
 
 type SimulationPanelProps = {
@@ -8,6 +9,7 @@ type SimulationPanelProps = {
   simulationStatus: 'RUN' | 'STOP'
   scanCount: number
   scanIntervalMs: number
+  simulationState: SimulationState | null
   t: (key: TranslationKey) => string
 }
 
@@ -25,6 +27,7 @@ export function SimulationPanel({
   simulationStatus,
   scanCount,
   scanIntervalMs,
+  simulationState,
   t,
 }: SimulationPanelProps) {
   const toggleInputValue = (variableId: string) => {
@@ -99,6 +102,25 @@ export function SimulationPanel({
             </div>
           )
         })}
+      </div>
+
+      <div className="debug-panel">
+        <div className="panel__header panel__header--compact">
+          <h3>{t('debugPanel')}</h3>
+        </div>
+        <dl className="debug-panel__grid">
+          <dt>{t('scan')}</dt>
+          <dd>{scanCount}</dd>
+          <dt>{t('activeElements')}</dt>
+          <dd>{simulationState?.activeElementIds.length ?? 0}</dd>
+          <dt>{t('activeConnections')}</dt>
+          <dd>{simulationState?.activeConnectionIds.length ?? 0}</dd>
+        </dl>
+        {simulationState?.breakpointRungId && (
+          <p className="debug-panel__breakpoint">
+            {t('breakpointHit')}: {simulationState.breakpointRungId}
+          </p>
+        )}
       </div>
     </aside>
   )
