@@ -60,6 +60,14 @@ type CopiedSelection = {
   connections: Connection[]
 }
 
+type LastDrop = {
+  rungId: string
+  elementType: ElementType
+  x: number
+  y: number
+  timestamp: number
+}
+
 const nodeTypes = {
   ladderNode: LadderNode,
   railNode: RailNode,
@@ -240,6 +248,7 @@ export function LadderEditor({
   const [copiedSelection, setCopiedSelection] =
     useState<CopiedSelection | null>(null)
   const flowInstancesRef = useRef(new Map<string, ReactFlowInstance>())
+  const lastDropRef = useRef<LastDrop | null>(null)
   const canEdit = simulationStatus !== 'RUN'
 
   const clearSelection = () => {
@@ -269,6 +278,7 @@ export function LadderEditor({
     rungId: string,
     type: ElementType,
     position?: { x: number; y: number },
+    autoConnect = true,
   ) => {
     if (!canEdit) {
       return
@@ -283,6 +293,7 @@ export function LadderEditor({
       addElement(currentProject, rungId, type, {
         id: elementId,
         position,
+        autoConnect,
       }),
     )
   }
@@ -552,6 +563,7 @@ export function LadderEditor({
     }
 
     event.preventDefault()
+    event.stopPropagation()
 
     const elementType =
       event.dataTransfer.getData(LADDER_ELEMENT_DRAG_TYPE) ||
@@ -576,8 +588,28 @@ export function LadderEditor({
       x: Math.max(0, droppedPosition.x - 64),
       y: Math.max(0, droppedPosition.y - 22),
     })
+    const lastDrop = lastDropRef.current
+    const duplicateDrop =
+      lastDrop &&
+      lastDrop.rungId === rungId &&
+      lastDrop.elementType === elementType &&
+      lastDrop.x === position.x &&
+      lastDrop.y === position.y &&
+      event.timeStamp - lastDrop.timestamp < 100
 
-    handleAddElement(rungId, elementType, position)
+    if (duplicateDrop) {
+      return
+    }
+
+    lastDropRef.current = {
+      rungId,
+      elementType,
+      x: position.x,
+      y: position.y,
+      timestamp: event.timeStamp,
+    }
+
+    handleAddElement(rungId, elementType, position, false)
   }
 
   const handleNodeClick = (
@@ -671,8 +703,6 @@ export function LadderEditor({
             <div
               className="rung-flow"
               data-testid={`rung-flow-${rung.number}`}
-              onDragOver={handleDragOver}
-              onDrop={(event) => handleDrop(rung.id, event)}
             >
               {rung.elements.length === 0 && canEdit && (
                 <div className="rung-empty-state">

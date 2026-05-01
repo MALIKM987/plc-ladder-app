@@ -1,7 +1,8 @@
 /** @vitest-environment jsdom */
 import { fireEvent, render, screen } from '@testing-library/react'
-import { useState, type ReactNode } from 'react'
+import { useState, type DragEvent, type ReactNode } from 'react'
 import { describe, expect, it, vi } from 'vitest'
+import { LADDER_ELEMENT_DRAG_TYPE } from '../../constants/dragDrop'
 import { LEFT_RAIL_ID, RIGHT_RAIL_ID } from '../../constants/rails'
 import { translations, type TranslationKey } from '../../i18n/translations'
 import {
@@ -24,12 +25,16 @@ vi.mock('reactflow', () => {
       nodesDraggable,
       elementsSelectable,
       onNodeClick,
+      onDragOver,
+      onDrop,
       children,
     }: {
       nodes: Array<{ id: string; data: { variableName?: string; label?: string } }>
       edges: Array<{ id: string }>
       nodesDraggable: boolean
       elementsSelectable: boolean
+      onDragOver?: (event: DragEvent<HTMLDivElement>) => void
+      onDrop?: (event: DragEvent<HTMLDivElement>) => void
       onNodeClick?: (
         event: { stopPropagation: () => void },
         node: { id: string },
@@ -40,6 +45,8 @@ vi.mock('reactflow', () => {
         data-testid="react-flow"
         data-elements-selectable={String(elementsSelectable)}
         data-nodes-draggable={String(nodesDraggable)}
+        onDragOver={onDragOver}
+        onDrop={onDrop}
       >
         {nodes.map((node) => (
           <button
@@ -162,5 +169,29 @@ describe('LadderEditor', () => {
       'data-elements-selectable',
       'false',
     )
+  })
+
+  it('drops exactly one element without creating an automatic connection', () => {
+    const dataTransfer = {
+      dropEffect: '',
+      getData: vi.fn((type: string) =>
+        type === LADDER_ELEMENT_DRAG_TYPE ? 'NC_CONTACT' : '',
+      ),
+    }
+
+    render(<LadderEditorHarness initialProject={createEditorProject()} />)
+
+    expect(screen.getAllByTestId(/^flow-node-/)).toHaveLength(4)
+    expect(screen.getAllByTestId(/^flow-edge-/)).toHaveLength(3)
+
+    fireEvent.drop(screen.getByTestId('react-flow'), {
+      clientX: 420,
+      clientY: 120,
+      dataTransfer,
+    })
+
+    expect(screen.getAllByTestId(/^flow-node-/)).toHaveLength(5)
+    expect(screen.getAllByTestId(/^flow-edge-/)).toHaveLength(3)
+    expect(screen.getByDisplayValue('NC_CONTACT')).toBeInTheDocument()
   })
 })

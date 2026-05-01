@@ -502,11 +502,13 @@ export function addElement(
   options: {
     id?: string
     position?: { x: number; y: number }
+    autoConnect?: boolean
   } = {},
 ): Project {
   const ensured = ensureVariableForElement(project, type)
   const defaultVariableId =
     ensured.variableId || getDefaultVariableId(ensured.project, type)
+  const autoConnect = options.autoConnect ?? true
 
   return {
     ...ensured.project,
@@ -533,7 +535,7 @@ export function addElement(
         ...clonedRung,
         elements: [...clonedRung.elements, newElement],
         connections:
-          lastElement && !isOutputOnlyElement(lastElement.type)
+          autoConnect && lastElement && !isOutputOnlyElement(lastElement.type)
             ? [
                 ...clonedRung.connections,
                 {
