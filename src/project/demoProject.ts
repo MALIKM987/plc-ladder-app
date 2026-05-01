@@ -2,8 +2,8 @@ import { LEFT_RAIL_ID, RIGHT_RAIL_ID } from '../constants/rails'
 import type { Project } from '../types/project'
 
 export const demoProject: Project = {
-  id: 'demo-project-v2',
-  name: 'Demo PLC Ladder v2',
+  id: 'demo-project-rc1',
+  name: 'PLC Ladder Studio Demo',
   version: '2.0.0',
   variables: [
     {
@@ -14,9 +14,23 @@ export const demoProject: Project = {
       value: false,
     },
     {
+      id: 'demo-var-stop',
+      name: 'Stop',
+      address: '%I0.1',
+      type: 'BOOL',
+      value: false,
+    },
+    {
       id: 'demo-var-sensor',
       name: 'Sensor',
-      address: '%I0.1',
+      address: '%I0.2',
+      type: 'BOOL',
+      value: false,
+    },
+    {
+      id: 'demo-var-reset',
+      name: 'Reset',
+      address: '%I0.3',
       type: 'BOOL',
       value: false,
     },
@@ -59,10 +73,11 @@ export const demoProject: Project = {
   ],
   rungs: [
     {
-      id: 'demo-rung-ton',
+      id: 'demo-rung-motor-start',
       number: 1,
-      title: 'Start timer motor',
-      comment: 'Start -> TON -> Motor',
+      title: 'Start/Stop Motor',
+      comment:
+        'Start uruchamia timer TON. Styk Stop jest NC, więc Stop=TRUE blokuje start.',
       breakpoint: false,
       elements: [
         {
@@ -72,16 +87,22 @@ export const demoProject: Project = {
           position: { x: 120, y: 70 },
         },
         {
+          id: 'demo-element-stop',
+          type: 'NC_CONTACT',
+          variableId: 'demo-var-stop',
+          position: { x: 280, y: 70 },
+        },
+        {
           id: 'demo-element-ton',
           type: 'TON',
           variableId: 'demo-var-timer',
-          position: { x: 320, y: 70 },
+          position: { x: 460, y: 70 },
         },
         {
           id: 'demo-element-motor',
           type: 'COIL',
           variableId: 'demo-var-motor',
-          position: { x: 560, y: 70 },
+          position: { x: 660, y: 70 },
         },
       ],
       connections: [
@@ -91,8 +112,13 @@ export const demoProject: Project = {
           toElementId: 'demo-element-start',
         },
         {
-          id: 'demo-connection-start-ton',
+          id: 'demo-connection-start-stop',
           fromElementId: 'demo-element-start',
+          toElementId: 'demo-element-stop',
+        },
+        {
+          id: 'demo-connection-stop-ton',
+          fromElementId: 'demo-element-stop',
           toElementId: 'demo-element-ton',
         },
         {
@@ -108,10 +134,11 @@ export const demoProject: Project = {
       ],
     },
     {
-      id: 'demo-rung-counter',
+      id: 'demo-rung-counter-set',
       number: 2,
-      title: 'Sensor counter marker',
-      comment: 'Sensor -> CTU -> Marker',
+      title: 'Sensor Counter',
+      comment:
+        'Każde zbocze narastające Sensor zwiększa CTU. Po PV=3 licznik ustawia Marker.',
       breakpoint: false,
       elements: [
         {
@@ -127,8 +154,8 @@ export const demoProject: Project = {
           position: { x: 320, y: 70 },
         },
         {
-          id: 'demo-element-marker',
-          type: 'COIL',
+          id: 'demo-element-set-marker',
+          type: 'SET_COIL',
           variableId: 'demo-var-marker',
           position: { x: 560, y: 70 },
         },
@@ -145,13 +172,51 @@ export const demoProject: Project = {
           toElementId: 'demo-element-ctu',
         },
         {
-          id: 'demo-connection-ctu-marker',
+          id: 'demo-connection-ctu-set-marker',
           fromElementId: 'demo-element-ctu',
-          toElementId: 'demo-element-marker',
+          toElementId: 'demo-element-set-marker',
         },
         {
-          id: 'demo-connection-marker-right',
-          fromElementId: 'demo-element-marker',
+          id: 'demo-connection-set-marker-right',
+          fromElementId: 'demo-element-set-marker',
+          toElementId: RIGHT_RAIL_ID,
+        },
+      ],
+    },
+    {
+      id: 'demo-rung-reset-marker',
+      number: 3,
+      title: 'Reset Marker',
+      comment: 'Wejście Reset kasuje zatrzaśnięty Marker.',
+      breakpoint: false,
+      elements: [
+        {
+          id: 'demo-element-reset',
+          type: 'NO_CONTACT',
+          variableId: 'demo-var-reset',
+          position: { x: 120, y: 70 },
+        },
+        {
+          id: 'demo-element-reset-marker',
+          type: 'RESET_COIL',
+          variableId: 'demo-var-marker',
+          position: { x: 420, y: 70 },
+        },
+      ],
+      connections: [
+        {
+          id: 'demo-connection-left-reset',
+          fromElementId: LEFT_RAIL_ID,
+          toElementId: 'demo-element-reset',
+        },
+        {
+          id: 'demo-connection-reset-reset-marker',
+          fromElementId: 'demo-element-reset',
+          toElementId: 'demo-element-reset-marker',
+        },
+        {
+          id: 'demo-connection-reset-marker-right',
+          fromElementId: 'demo-element-reset-marker',
           toElementId: RIGHT_RAIL_ID,
         },
       ],

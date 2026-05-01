@@ -58,7 +58,7 @@ export function TopBar({
           LD
         </span>
         <div>
-          <h1>PLC Ladder Editor</h1>
+          <h1>PLC Ladder Studio</h1>
           <p>{t('appSubtitle')}</p>
         </div>
       </div>

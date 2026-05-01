@@ -10,9 +10,9 @@ export default defineConfig({
       registerType: 'autoUpdate',
       injectRegister: 'auto',
       manifest: {
-        name: 'PLC Ladder Editor',
+        name: 'PLC Ladder Studio',
         short_name: 'PLC Ladder',
-        description: 'Local PLC ladder editor and simulator',
+        description: 'Local PLC Ladder editor, simulator, and Structured Text exporter',
         theme_color: '#17202a',
         background_color: '#eef1f4',
         display: 'standalone',
@@ -27,7 +27,7 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,png,ico}'],
+        globPatterns: ['**/*.{js,css,html,svg,png,ico,webmanifest}'],
       },
     }),
   ],

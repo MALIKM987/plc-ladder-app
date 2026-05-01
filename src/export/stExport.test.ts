@@ -12,6 +12,25 @@ import {
 } from '../test/builders'
 
 describe('exportProjectToStructuredText', () => {
+  it('adds release header, timestamp, and variable comments', () => {
+    const start = createBoolVariable({
+      id: 'start',
+      name: 'Start',
+      address: '%I0.0',
+    })
+    const project = createProject({
+      name: 'Release Demo',
+      variables: [start],
+      rungs: [],
+    })
+    const st = exportProjectToStructuredText(project)
+
+    expect(st).toContain('PLC Ladder Studio Structured Text export')
+    expect(st).toContain('Project: Release Demo')
+    expect(st).toContain('Generated:')
+    expect(st).toContain('BOOL Start AT %I0.0')
+  })
+
   it('exports Start -> Motor as assignment', () => {
     const start = createBoolVariable({ id: 'start', name: 'Start', value: true })
     const motor = createBoolVariable({
@@ -184,7 +203,7 @@ describe('exportProjectToStructuredText', () => {
     const start = createBoolVariable({ id: 'start', name: 'Start Signal' })
     const motor = createBoolVariable({
       id: 'motor',
-      name: 'Motor-1',
+      name: '1-Motor',
       address: '%Q0.0',
     })
     const startContact = createElement({
@@ -212,7 +231,7 @@ describe('exportProjectToStructuredText', () => {
     })
 
     expect(exportProjectToStructuredText(project)).toContain(
-      'Motor_1 := Start_Signal;',
+      '_1_Motor := Start_Signal;',
     )
   })
 })

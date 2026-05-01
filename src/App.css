@@ -1142,7 +1142,8 @@ th {
   font-size: 13px;
 }
 
-.onboarding {
+.onboarding,
+.autosave-prompt {
   position: fixed;
   right: 18px;
   top: 86px;
@@ -1150,7 +1151,12 @@ th {
   width: min(360px, calc(100vw - 36px));
 }
 
-.onboarding__card {
+.autosave-prompt {
+  top: 18px;
+}
+
+.onboarding__card,
+.autosave-prompt__card {
   display: grid;
   gap: 12px;
   border: 1px solid var(--border);
@@ -1161,9 +1167,17 @@ th {
   padding: 14px;
 }
 
-.onboarding__card strong {
+.onboarding__card strong,
+.autosave-prompt__card strong {
   display: block;
   margin-bottom: 8px;
+}
+
+.autosave-prompt__card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
 }
 
 .onboarding__card ul {
@@ -1175,7 +1189,16 @@ th {
   font-size: 13px;
 }
 
+.onboarding__actions,
+.autosave-prompt__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .onboarding__card button,
+.autosave-prompt__card button,
 .error-boundary button {
   justify-self: start;
   border: 1px solid var(--border);
@@ -1208,6 +1231,11 @@ th {
 .error-boundary__card h1 {
   margin: 0;
   font-size: 20px;
+}
+
+.error-boundary__card p {
+  margin: 0;
+  color: var(--muted);
 }
 
 @media (max-width: 980px) {

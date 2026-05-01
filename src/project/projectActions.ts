@@ -673,6 +673,36 @@ export function updateElementPosition(
   }
 }
 
+export function updateElementPositions(
+  project: Project,
+  positionsByElementId: Record<string, { x: number; y: number }>,
+): Project {
+  const snappedPositions = new Map(
+    Object.entries(positionsByElementId).map(([elementId, position]) => [
+      elementId,
+      snapPosition(position),
+    ]),
+  )
+
+  return {
+    ...project,
+    rungs: project.rungs.map((rung) => ({
+      ...rung,
+      elements: rung.elements.map((element) => {
+        const nextPosition = snappedPositions.get(element.id)
+
+        return nextPosition
+          ? {
+              ...element,
+              position: { ...nextPosition },
+            }
+          : cloneElement(element)
+      }),
+      connections: rung.connections.map((connection) => ({ ...connection })),
+    })),
+  }
+}
+
 export function addConnection(
   project: Project,
   rungId: string,

@@ -6,6 +6,7 @@ import {
   autoLayoutRung,
   GRID_SIZE,
   updateElementPosition,
+  updateElementPositions,
 } from './projectActions'
 import {
   createBoolVariable,
@@ -70,6 +71,35 @@ describe('projectActions', () => {
 
     expect(result.rungs[0].elements[0].position.x % GRID_SIZE).toBe(0)
     expect(result.rungs[0].elements[0].position.y % GRID_SIZE).toBe(0)
+  })
+
+  it('updates multiple moved nodes in one immutable action', () => {
+    const variable = createBoolVariable({ id: 'start' })
+    const first = createElement({ id: 'first', variableId: variable.id })
+    const second = createElement({ id: 'second', variableId: variable.id })
+    const project = createProject({
+      variables: [variable],
+      rungs: [
+        createRung({
+          id: 'rung',
+          elements: [first, second],
+        }),
+      ],
+    })
+    const result = updateElementPositions(project, {
+      first: { x: 133, y: 68 },
+      second: { x: 276, y: 92 },
+    })
+
+    expect(
+      result.rungs[0].elements.find((element) => element.id === 'first')
+        ?.position,
+    ).toEqual({ x: 140, y: 60 })
+    expect(
+      result.rungs[0].elements.find((element) => element.id === 'second')
+        ?.position,
+    ).toEqual({ x: 280, y: 100 })
+    expect(project.rungs[0].elements[0].position).toEqual(first.position)
   })
 
   it('auto-layout aligns rung elements left to right', () => {

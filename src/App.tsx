@@ -6,6 +6,7 @@ import {
   useState,
 } from 'react'
 import { BlockLibrary } from './components/BlockLibrary'
+import { AutosavePrompt } from './components/AutosavePrompt'
 import { BottomPanel } from './components/BottomPanel'
 import { LadderEditor } from './components/LadderEditor'
 import { OnboardingOverlay } from './components/OnboardingOverlay'
@@ -13,6 +14,7 @@ import { SimulationPanel } from './components/SimulationPanel'
 import { TopBar } from './components/TopBar'
 import { ToastViewport, type ToastMessage } from './components/ToastViewport'
 import { exportProjectToStructuredText } from './export/stExport'
+import { useAutosaveProject } from './hooks/useAutosaveProject'
 import { useProjectHistory } from './hooks/useProjectHistory'
 import type { Language } from './i18n/translations'
 import { useTranslation } from './i18n/useTranslation'
@@ -22,6 +24,7 @@ import { resetSimulationProject } from './project/projectActions'
 import { simulateProjectWithState } from './simulator/simulate'
 import type { SimulationState } from './simulator/simulationState'
 import { validateProject } from './validation/validateProject'
+import { RELEASE_MODE } from './constants/release'
 import './App.css'
 
 type SimulationStatus = 'RUN' | 'STOP'
@@ -58,7 +61,10 @@ function safeMigrateProject(rawProject: unknown) {
   try {
     return migrateProject(rawProject)
   } catch (error) {
-    console.error('Project migration failed', error)
+    if (!RELEASE_MODE) {
+      console.error('Project migration failed', error)
+    }
+
     return migrateProject({})
   }
 }
@@ -86,7 +92,7 @@ function App() {
     localStorage.getItem(LANGUAGE_STORAGE_KEY) === 'en' ? 'en' : 'pl',
   )
   const [showDebug, setShowDebug] = useState(
-    () => localStorage.getItem(DEBUG_STORAGE_KEY) === 'true',
+    () => !RELEASE_MODE && localStorage.getItem(DEBUG_STORAGE_KEY) === 'true',
   )
   const [showOnboarding, setShowOnboarding] = useState(
     () => localStorage.getItem(ONBOARDING_STORAGE_KEY) !== 'true',
@@ -94,6 +100,8 @@ function App() {
   const [toasts, setToasts] = useState<ToastMessage[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { t } = useTranslation(language)
+  const { autosavedProject, discardAutosave, markAutosaveHandled } =
+    useAutosaveProject(project)
 
   const showToast = useCallback((message: string) => {
     const toast: ToastMessage = {
@@ -220,6 +228,24 @@ function App() {
     showToast(t('demoLoaded'))
   }
 
+  const handleRestoreAutosave = () => {
+    if (!autosavedProject) {
+      return
+    }
+
+    resetHistory(autosavedProject)
+    resetRuntimeState()
+    markAutosaveHandled()
+    showToast(t('autosaveRestored'))
+  }
+
+  const handleStartDemoFromAutosave = () => {
+    resetHistory(safeMigrateProject(demoProject))
+    resetRuntimeState()
+    discardAutosave()
+    showToast(t('demoLoaded'))
+  }
+
   const handleOpenProject = () => {
     resetRuntimeState()
     fileInputRef.current?.click()
@@ -236,6 +262,10 @@ function App() {
 
     try {
       const fileContent = await file.text()
+      if (!fileContent.trim()) {
+        throw new Error('Empty project file')
+      }
+
       const loadedProject = safeMigrateProject(JSON.parse(fileContent))
 
       resetHistory(loadedProject)
@@ -257,7 +287,10 @@ function App() {
       )
       showToast(t('projectSaved'))
     } catch (error) {
-      console.error('Project save failed', error)
+      if (!RELEASE_MODE) {
+        console.error('Project save failed', error)
+      }
+
       window.alert(t('projectSaveFailed'))
     }
   }
@@ -270,7 +303,10 @@ function App() {
         'text/plain',
       )
     } catch (error) {
-      console.error('Structured Text export failed', error)
+      if (!RELEASE_MODE) {
+        console.error('Structured Text export failed', error)
+      }
+
       window.alert(t('exportFailed'))
       showToast(t('exportFailed'))
     }
@@ -374,8 +410,22 @@ function App() {
         className="file-input"
         onChange={handleProjectFileSelected}
       />
-      {showOnboarding && (
-        <OnboardingOverlay t={t} onClose={handleCloseOnboarding} />
+      {autosavedProject && (
+        <AutosavePrompt
+          t={t}
+          onRestore={handleRestoreAutosave}
+          onStartDemo={handleStartDemoFromAutosave}
+        />
+      )}
+      {showOnboarding && !autosavedProject && (
+        <OnboardingOverlay
+          t={t}
+          onDismiss={handleCloseOnboarding}
+          onLoadDemo={() => {
+            handleLoadDemo()
+            handleCloseOnboarding()
+          }}
+        />
       )}
       <ToastViewport toasts={toasts} />
     </div>

@@ -70,6 +70,6 @@ describe('VariableTable', () => {
 
     expect(screen.getByLabelText('Nazwa Start')).toBeDisabled()
     expect(screen.getByRole('button', { name: '+ Dodaj BOOL' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Usun' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Usuń' })).toBeDisabled()
   })
 })

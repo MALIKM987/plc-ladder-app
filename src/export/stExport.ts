@@ -10,12 +10,19 @@ type ExportContext = {
   variablesById: Map<string, Variable>
   emittedBlocks: Set<string>
   blockLines: string[]
+  todoLines: string[]
   memo: Map<string, string>
   visiting: Set<string>
 }
 
 function sanitizeName(name: string) {
-  return name.replace(/[^a-zA-Z0-9_]/g, '_') || 'Var'
+  const sanitized = name.replace(/[^a-zA-Z0-9_]/g, '_') || 'Var'
+
+  return /^[a-zA-Z_]/.test(sanitized) ? sanitized : `_${sanitized}`
+}
+
+function escapeComment(value: string) {
+  return value.replace(/\*\)/g, '* )')
 }
 
 function getVariableName(context: ExportContext, variableId: string) {
@@ -124,12 +131,18 @@ function getElementExpression(
   }
 
   if (context.visiting.has(elementId)) {
+    context.todoLines.push(
+      `(* TODO: Pominięto cykl w szczeblu ${rung.number}. *)`,
+    )
     return 'FALSE'
   }
 
   const element = getElement(rung, elementId)
 
   if (!element) {
+    context.todoLines.push(
+      `(* TODO: Pominięto brakujący element w szczeblu ${rung.number}. *)`,
+    )
     return 'FALSE'
   }
 
@@ -160,63 +173,114 @@ function getElementExpression(
 
 function exportRung(rung: Rung, context: ExportContext) {
   const lines: string[] = []
+  const bodyLines: string[] = []
   const header = rung.title?.trim()
-    ? `(* Rung ${rung.number}: ${rung.title.trim()} *)`
+    ? `(* Rung ${rung.number}: ${escapeComment(rung.title.trim())} *)`
     : `(* Rung ${rung.number} *)`
 
   lines.push(header)
 
   if (rung.comment?.trim()) {
-    lines.push(`(* ${rung.comment.trim()} *)`)
+    lines.push(`(* ${escapeComment(rung.comment.trim())} *)`)
   }
 
   for (const element of rung.elements) {
-    if (
-      isOutputOnlyElement(element.type) ||
-      rung.connections.some(
-        (connection) =>
-          connection.fromElementId === element.id &&
-          connection.toElementId === RIGHT_RAIL_ID,
-      )
-    ) {
-      const inputExpression = getInputExpression(element, rung, context)
-      const variableName = getVariableName(context, element.variableId)
+    const drivesRightRail = rung.connections.some(
+      (connection) =>
+        connection.fromElementId === element.id &&
+        connection.toElementId === RIGHT_RAIL_ID,
+    )
 
-      if (element.type === 'COIL') {
-        lines.push(`${variableName} := ${inputExpression};`)
-      }
-
-      if (element.type === 'SET_COIL') {
-        lines.push(`IF ${inputExpression} THEN ${variableName} := TRUE; END_IF;`)
-      }
-
-      if (element.type === 'RESET_COIL') {
-        lines.push(`IF ${inputExpression} THEN ${variableName} := FALSE; END_IF;`)
-      }
-
-      if (isTimerElement(element.type) || isCounterElement(element.type)) {
-        getElementExpression(element.id, rung, context)
-      }
+    if (!isOutputOnlyElement(element.type) && !drivesRightRail) {
+      continue
     }
+
+    const inputExpression = getInputExpression(element, rung, context)
+    const variableName = getVariableName(context, element.variableId)
+
+    if (element.type === 'COIL') {
+      bodyLines.push(`${variableName} := ${inputExpression};`)
+      continue
+    }
+
+    if (element.type === 'SET_COIL') {
+      bodyLines.push(`IF ${inputExpression} THEN ${variableName} := TRUE; END_IF;`)
+      continue
+    }
+
+    if (element.type === 'RESET_COIL') {
+      bodyLines.push(`IF ${inputExpression} THEN ${variableName} := FALSE; END_IF;`)
+      continue
+    }
+
+    if (isTimerElement(element.type) || isCounterElement(element.type)) {
+      getElementExpression(element.id, rung, context)
+      continue
+    }
+
+    context.todoLines.push(
+      `(* TODO: Nieobsługiwany element ${element.type} w szczeblu ${rung.number}. *)`,
+    )
   }
 
-  return [...context.blockLines, ...lines].join('\n')
+  if (
+    context.blockLines.length === 0 &&
+    bodyLines.length === 0 &&
+    context.todoLines.length === 0
+  ) {
+    context.todoLines.push(
+      `(* TODO: Szczebel ${rung.number} nie ma eksportowalnego wyjścia. *)`,
+    )
+  }
+
+  return [
+    ...lines,
+    ...context.todoLines,
+    ...context.blockLines,
+    ...bodyLines,
+  ].join('\n')
+}
+
+function formatVariableComment(variable: Variable) {
+  const name = sanitizeName(variable.name)
+  const base = `${variable.type} ${name} AT ${variable.address}`
+
+  if (variable.type === 'TIMER') {
+    return `(* ${base}; PT=${variable.presetMs ?? 1000}ms; ET=${variable.elapsedMs ?? 0}ms; Q=${Boolean(variable.done).toString().toUpperCase()} *)`
+  }
+
+  if (variable.type === 'COUNTER') {
+    return `(* ${base}; PV=${variable.preset ?? 3}; CV=${variable.count ?? 0}; Q=${Boolean(variable.done).toString().toUpperCase()} *)`
+  }
+
+  return `(* ${base}; VALUE=${Boolean(variable.value).toString().toUpperCase()} *)`
 }
 
 export function exportProjectToStructuredText(project: Project) {
   const variablesById = new Map(
     project.variables.map((variable) => [variable.id, variable]),
   )
+  const timestamp = new Date().toISOString()
+  const header = [
+    `(* PLC Ladder Studio Structured Text export *)`,
+    `(* Project: ${escapeComment(project.name)} *)`,
+    `(* Generated: ${timestamp} *)`,
+    `(* Educational simulator output - review before using anywhere else. *)`,
+    '',
+    `(* Variables *)`,
+    ...project.variables.map(formatVariableComment),
+  ]
 
-  return project.rungs
-    .map((rung) =>
-      exportRung(rung, {
-        variablesById,
-        emittedBlocks: new Set(),
-        blockLines: [],
-        memo: new Map(),
-        visiting: new Set(),
-      }),
-    )
-    .join('\n\n')
+  const rungExports = project.rungs.map((rung) =>
+    exportRung(rung, {
+      variablesById,
+      emittedBlocks: new Set(),
+      blockLines: [],
+      todoLines: [],
+      memo: new Map(),
+      visiting: new Set(),
+    }),
+  )
+
+  return [...header, '', ...rungExports].join('\n')
 }

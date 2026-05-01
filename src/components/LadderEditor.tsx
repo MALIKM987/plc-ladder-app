@@ -31,7 +31,7 @@ import {
   removeElement,
   removeRung,
   snapPosition,
-  updateElementPosition,
+  updateElementPositions,
 } from '../project/projectActions'
 import type { SimulationState } from '../simulator/simulationState'
 import type {
@@ -474,15 +474,15 @@ export function LadderEditor({
       return
     }
 
-    setProject((currentProject) =>
-      updateElementPosition(currentProject, node.id, node.position),
-    )
-    setDraftPositions((currentPositions) => {
-      const nextPositions = { ...currentPositions }
+    const positionsToCommit = {
+      ...draftPositions,
+      [node.id]: snapPosition(node.position),
+    }
 
-      delete nextPositions[node.id]
-      return nextPositions
-    })
+    setProject((currentProject) =>
+      updateElementPositions(currentProject, positionsToCommit),
+    )
+    setDraftPositions({})
   }
 
   const handleNodesDelete = (

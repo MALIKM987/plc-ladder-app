@@ -48,6 +48,28 @@ function getElementLabel(
   return `${element.type} #${elementNumber} (${getVariableLabel(variable)})`
 }
 
+function getEndpointLabel(
+  rung: Rung,
+  elementId: string,
+  variablesById: Map<string, Variable>,
+) {
+  if (elementId === LEFT_RAIL_ID) {
+    return 'lewa szyna zasilania'
+  }
+
+  if (elementId === RIGHT_RAIL_ID) {
+    return 'prawa szyna zasilania'
+  }
+
+  const element = rung.elements.find((candidate) => candidate.id === elementId)
+
+  if (!element) {
+    return 'nieznany punkt'
+  }
+
+  return getElementLabel(element, rung, variablesById)
+}
+
 function endpointExists(rung: Rung, elementId: string) {
   return (
     isRailId(elementId) ||
@@ -192,6 +214,7 @@ function validateRungConnections(
   const issues: ValidationIssue[] = []
   const duplicateConnections = new Set<string>()
   const seenConnections = new Set<string>()
+  const connectionLabelsByKey = new Map<string, string>()
   const reachableFromLeft = getReachableFromLeft(rung)
 
   for (const connection of rung.connections) {
@@ -226,13 +249,23 @@ function validateRungConnections(
     }
 
     seenConnections.add(key)
+    connectionLabelsByKey.set(
+      key,
+      `${getEndpointLabel(
+        rung,
+        connection.fromElementId,
+        variablesById,
+      )} -> ${getEndpointLabel(rung, connection.toElementId, variablesById)}`,
+    )
   }
 
   for (const duplicateConnection of duplicateConnections) {
     issues.push({
       id: `duplicate-connection-${rung.id}-${duplicateConnection}`,
       severity: 'error',
-      message: `Szczebel ${rung.number}: duplikat polaczenia ${duplicateConnection}.`,
+      message: `Szczebel ${rung.number}: duplikat polaczenia ${connectionLabelsByKey.get(
+        duplicateConnection,
+      ) ?? 'miedzy tymi samymi punktami'}.`,
     })
   }
 

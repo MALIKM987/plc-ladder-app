@@ -1,3 +1,4 @@
+export { AutosavePrompt } from '../../components/AutosavePrompt'
 export { ErrorBoundary } from '../../components/ErrorBoundary'
 export { OnboardingOverlay } from '../../components/OnboardingOverlay'
 export { ToastViewport } from '../../components/ToastViewport'

@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
+import { RELEASE_MODE } from '../constants/release'
 
 type ErrorBoundaryProps = {
   children: ReactNode
@@ -19,7 +20,9 @@ export class ErrorBoundary extends Component<
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('PLC Ladder application error', error, errorInfo)
+    if (!RELEASE_MODE) {
+      console.error('PLC Ladder application error', error, errorInfo)
+    }
   }
 
   render() {
@@ -28,6 +31,7 @@ export class ErrorBoundary extends Component<
         <main className="error-boundary" role="alert">
           <section className="error-boundary__card">
             <h1>Wystąpił błąd aplikacji</h1>
+            <p>Odśwież aplikację</p>
             <button type="button" onClick={() => window.location.reload()}>
               Odśwież
             </button>

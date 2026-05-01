@@ -121,4 +121,72 @@ describe('migrateProject', () => {
     expect(() => migrateProject('not a project')).not.toThrow()
     expect(migrateProject(null).rungs).toEqual([])
   })
+
+  it('treats an empty project-like file as a safe blank project', () => {
+    const project = migrateProject({
+      id: '',
+      name: '',
+      version: '',
+      variables: '',
+      rungs: '',
+    })
+
+    expect(project.id).toBe('project')
+    expect(project.name).toBe('PLC Ladder Project')
+    expect(project.variables).toEqual([])
+    expect(project.rungs).toEqual([])
+  })
+
+  it('filters partially damaged rung data instead of crashing', () => {
+    const project = migrateProject({
+      variables: [
+        null,
+        { id: 'start', name: 'Start', address: '%I0.0', type: 'BOOL' },
+      ],
+      rungs: [
+        {
+          id: 'rung',
+          elements: [
+            null,
+            {
+              id: 'bad-element',
+              type: 'BAD_TYPE',
+              variableId: 'start',
+              position: { x: Number.NaN, y: 'bad' },
+            },
+          ],
+          connections: [
+            null,
+            {
+              id: 'self-loop',
+              fromElementId: 'bad-element',
+              toElementId: 'bad-element',
+            },
+            {
+              id: 'missing-target',
+              fromElementId: 'bad-element',
+              toElementId: 'missing',
+            },
+          ],
+        },
+      ],
+    })
+
+    expect(project.variables).toHaveLength(2)
+    expect(project.rungs[0].elements).toHaveLength(2)
+    expect(project.rungs[0].elements[1]).toEqual(
+      expect.objectContaining({
+        id: 'bad-element',
+        type: 'NO_CONTACT',
+        variableId: 'start',
+        position: { x: 280, y: 70 },
+      }),
+    )
+    expect(project.rungs[0].connections).toEqual(
+      expect.not.arrayContaining([
+        expect.objectContaining({ id: 'self-loop' }),
+        expect.objectContaining({ id: 'missing-target' }),
+      ]),
+    )
+  })
 })

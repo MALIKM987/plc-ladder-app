@@ -21,6 +21,7 @@ describe('ErrorBoundary', () => {
     )
 
     expect(screen.getByText('Wystąpił błąd aplikacji')).toBeInTheDocument()
+    expect(screen.getByText('Odśwież aplikację')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Odśwież' })).toBeInTheDocument()
 
     consoleError.mockRestore()
