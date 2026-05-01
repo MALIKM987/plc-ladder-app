@@ -1,7 +1,5 @@
 import {
   type ChangeEvent,
-  type Dispatch,
-  type SetStateAction,
   useCallback,
   useEffect,
   useRef,
@@ -15,6 +13,7 @@ import { SimulationPanel } from './components/SimulationPanel'
 import { TopBar } from './components/TopBar'
 import { ToastViewport, type ToastMessage } from './components/ToastViewport'
 import { exportProjectToStructuredText } from './export/stExport'
+import { useProjectHistory } from './hooks/useProjectHistory'
 import type { Language } from './i18n/translations'
 import { useTranslation } from './i18n/useTranslation'
 import { demoProject } from './project/demoProject'
@@ -22,7 +21,6 @@ import { migrateProject } from './project/migrateProject'
 import { resetSimulationProject } from './project/projectActions'
 import { simulateProjectWithState } from './simulator/simulate'
 import type { SimulationState } from './simulator/simulationState'
-import type { Project } from './types/project'
 import { validateProject } from './validation/validateProject'
 import './App.css'
 
@@ -34,7 +32,6 @@ const THEME_STORAGE_KEY = 'plc-ladder-theme'
 const LANGUAGE_STORAGE_KEY = 'plc-ladder-language'
 const DEBUG_STORAGE_KEY = 'plc-ladder-show-debug'
 const ONBOARDING_STORAGE_KEY = 'plc-ladder-onboarding-dismissed'
-const HISTORY_LIMIT = 60
 
 function downloadTextFile(fileName: string, content: string, type: string) {
   const blob = new Blob([content], { type })
@@ -67,11 +64,16 @@ function safeMigrateProject(rawProject: unknown) {
 }
 
 function App() {
-  const [project, setProjectState] = useState<Project>(() =>
-    safeMigrateProject(demoProject),
-  )
-  const [undoStack, setUndoStack] = useState<Project[]>([])
-  const [redoStack, setRedoStack] = useState<Project[]>([])
+  const {
+    project,
+    setProject,
+    setProjectWithoutHistory,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
+    resetHistory,
+  } = useProjectHistory(() => safeMigrateProject(demoProject))
   const [simulationStatus, setSimulationStatus] =
     useState<SimulationStatus>('STOP')
   const [simulationState, setSimulationState] =
@@ -91,7 +93,6 @@ function App() {
   )
   const [toasts, setToasts] = useState<ToastMessage[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const projectRef = useRef(project)
   const { t } = useTranslation(language)
 
   const showToast = useCallback((message: string) => {
@@ -108,41 +109,8 @@ function App() {
     }, 3200)
   }, [])
 
-  useEffect(() => {
-    projectRef.current = project
-  }, [project])
-
-  const setProjectWithHistory: Dispatch<SetStateAction<Project>> =
-    useCallback((update) => {
-      setProjectState((currentProject) => {
-        const nextProject =
-          typeof update === 'function'
-            ? (update as (project: Project) => Project)(currentProject)
-            : update
-
-        if (nextProject !== currentProject) {
-          setUndoStack((currentStack) => [
-            ...currentStack.slice(-(HISTORY_LIMIT - 1)),
-            currentProject,
-          ])
-          setRedoStack([])
-        }
-
-        return nextProject
-      })
-    }, [])
-
-  const setProjectWithoutHistory: Dispatch<SetStateAction<Project>> =
-    useCallback((update) => {
-      setProjectState((currentProject) =>
-        typeof update === 'function'
-          ? (update as (project: Project) => Project)(currentProject)
-          : update,
-      )
-    }, [])
-
   const executeScan = useCallback(() => {
-    setProjectState((currentProject) => {
+    setProjectWithoutHistory((currentProject) => {
       const result = simulateProjectWithState(
         currentProject,
         SCAN_INTERVAL_MS,
@@ -158,7 +126,7 @@ function App() {
       return result.project
     })
     setScanCount((currentScanCount) => currentScanCount + 1)
-  }, [])
+  }, [setProjectWithoutHistory])
 
   useEffect(() => {
     if (simulationStatus !== 'RUN') {
@@ -190,56 +158,23 @@ function App() {
     setScanCount(0)
   }
 
-  const resetHistory = () => {
-    setUndoStack([])
-    setRedoStack([])
-  }
-
   const handleUndo = useCallback(() => {
     if (simulationStatus === 'RUN') {
       return
     }
 
-    setUndoStack((currentUndoStack) => {
-      const previousProject = currentUndoStack[currentUndoStack.length - 1]
-
-      if (!previousProject) {
-        return currentUndoStack
-      }
-
-      setRedoStack((currentRedoStack) => [
-        projectRef.current,
-        ...currentRedoStack,
-      ])
-      setProjectState(previousProject)
-      setSimulationState(null)
-
-      return currentUndoStack.slice(0, -1)
-    })
-  }, [simulationStatus])
+    undo()
+    setSimulationState(null)
+  }, [simulationStatus, undo])
 
   const handleRedo = useCallback(() => {
     if (simulationStatus === 'RUN') {
       return
     }
 
-    setRedoStack((currentRedoStack) => {
-      const nextProject = currentRedoStack[0]
-
-      if (!nextProject) {
-        return currentRedoStack
-      }
-
-      setUndoStack((currentUndoStack) => [
-        ...currentUndoStack.slice(-(HISTORY_LIMIT - 1)),
-        projectRef.current,
-      ])
-      setProjectState(nextProject)
-      setSimulationState(null)
-
-      return currentRedoStack.slice(1)
-    })
-  }, [simulationStatus])
+    redo()
+    setSimulationState(null)
+  }, [redo, simulationStatus])
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -247,9 +182,20 @@ function App() {
         return
       }
 
+      if (
+        (event.ctrlKey || event.metaKey) &&
+        event.shiftKey &&
+        event.key.toLowerCase() === 'z'
+      ) {
+        event.preventDefault()
+        handleRedo()
+        return
+      }
+
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {
         event.preventDefault()
         handleUndo()
+        return
       }
 
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'y') {
@@ -264,15 +210,13 @@ function App() {
   }, [handleRedo, handleUndo])
 
   const handleNewProject = () => {
-    setProjectState(safeMigrateProject(demoProject))
+    resetHistory(safeMigrateProject(demoProject))
     resetRuntimeState()
-    resetHistory()
   }
 
   const handleLoadDemo = () => {
-    setProjectState(safeMigrateProject(demoProject))
+    resetHistory(safeMigrateProject(demoProject))
     resetRuntimeState()
-    resetHistory()
     showToast(t('demoLoaded'))
   }
 
@@ -294,9 +238,8 @@ function App() {
       const fileContent = await file.text()
       const loadedProject = safeMigrateProject(JSON.parse(fileContent))
 
-      setProjectState(loadedProject)
+      resetHistory(loadedProject)
       resetRuntimeState()
-      resetHistory()
     } catch {
       window.alert(t('invalidProjectFile'))
       showToast(t('invalidProjectFile'))
@@ -355,7 +298,9 @@ function App() {
   }
 
   const handleResetSimulation = () => {
-    setProjectState((currentProject) => resetSimulationProject(currentProject))
+    setProjectWithoutHistory((currentProject) =>
+      resetSimulationProject(currentProject),
+    )
     resetRuntimeState()
     showToast(t('simulationResetDone'))
   }
@@ -382,8 +327,8 @@ function App() {
         onExportStructuredText={handleExportStructuredText}
         onUndo={handleUndo}
         onRedo={handleRedo}
-        canUndo={undoStack.length > 0}
-        canRedo={redoStack.length > 0}
+        canUndo={simulationStatus !== 'RUN' && canUndo}
+        canRedo={simulationStatus !== 'RUN' && canRedo}
         onRunSimulation={handleRunSimulation}
         onStopSimulation={handleStopSimulation}
         onStepScan={handleStepScan}
@@ -394,7 +339,9 @@ function App() {
         <BlockLibrary t={t} />
         <LadderEditor
           project={project}
-          setProject={setProjectWithHistory}
+          setProject={
+            simulationStatus === 'RUN' ? setProjectWithoutHistory : setProject
+          }
           simulationStatus={simulationStatus}
           simulationState={simulationState}
           showDebug={showDebug}
@@ -414,7 +361,7 @@ function App() {
 
       <BottomPanel
         project={project}
-        setProject={setProjectWithHistory}
+        setProject={setProject}
         simulationStatus={simulationStatus}
         onNotify={showToast}
         t={t}

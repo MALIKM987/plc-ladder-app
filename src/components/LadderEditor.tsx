@@ -146,6 +146,7 @@ function mapRungToNodes(
   rung: Rung,
   project: Project,
   selectedElementIds: string[],
+  draftPositions: Record<string, { x: number; y: number }>,
   simulationStatus: 'RUN' | 'STOP',
   simulationState: SimulationState | null,
   t: (key: TranslationKey) => string,
@@ -159,7 +160,7 @@ function mapRungToNodes(
       return {
         id: element.id,
         type: 'ladderNode',
-        position: element.position,
+        position: draftPositions[element.id] ?? element.position,
         selected: selectedElementIds.includes(element.id),
         data: {
           elementType: element.type,
@@ -245,6 +246,9 @@ export function LadderEditor({
   const [selectedRungId, setSelectedRungId] = useState<string | null>(
     project.rungs[0]?.id ?? null,
   )
+  const [draftPositions, setDraftPositions] = useState<
+    Record<string, { x: number; y: number }>
+  >({})
   const [copiedSelection, setCopiedSelection] =
     useState<CopiedSelection | null>(null)
   const flowInstancesRef = useRef(new Map<string, ReactFlowInstance>())
@@ -439,18 +443,74 @@ export function LadderEditor({
       return
     }
 
-    setProject((currentProject) =>
-      changes.reduce((nextProject, change) => {
-        if (
-          change.type !== 'position' ||
-          !change.position ||
-          isRailId(change.id)
-        ) {
-          return nextProject
-        }
+    const positionChanges = changes.filter(
+      (change) =>
+        change.type === 'position' &&
+        change.position &&
+        !isRailId(change.id),
+    )
 
-        return updateElementPosition(nextProject, change.id, change.position)
-      }, currentProject),
+    if (positionChanges.length === 0) {
+      return
+    }
+
+    setDraftPositions((currentPositions) => {
+      const nextPositions = { ...currentPositions }
+
+      for (const change of positionChanges) {
+        if (change.type === 'position' && change.position) {
+          nextPositions[change.id] = snapPosition(change.position)
+        }
+      }
+
+      return nextPositions
+    })
+  }
+
+  const handleNodeDragStop = (
+    node: Node<LadderNodeData | RailNodeData>,
+  ) => {
+    if (!canEdit || isRailId(node.id)) {
+      return
+    }
+
+    setProject((currentProject) =>
+      updateElementPosition(currentProject, node.id, node.position),
+    )
+    setDraftPositions((currentPositions) => {
+      const nextPositions = { ...currentPositions }
+
+      delete nextPositions[node.id]
+      return nextPositions
+    })
+  }
+
+  const handleNodesDelete = (
+    rungId: string,
+    deletedNodes: Array<Node<LadderNodeData | RailNodeData>>,
+  ) => {
+    if (!canEdit) {
+      return
+    }
+
+    const deletedElementNodes = deletedNodes.filter((node) => !isRailId(node.id))
+
+    clearSelection()
+    setDraftPositions((currentPositions) => {
+      const nextPositions = { ...currentPositions }
+
+      for (const node of deletedElementNodes) {
+        delete nextPositions[node.id]
+      }
+
+      return nextPositions
+    })
+    setProject((currentProject) =>
+      deletedElementNodes.reduce(
+        (nextProject, node) =>
+          removeElement(nextProject, rungId, node.id, { reconnect: false }),
+        currentProject,
+      ),
     )
   }
 
@@ -524,26 +584,6 @@ export function LadderEditor({
     setSelectedEdgeIds((currentEdgeIds) =>
       currentEdgeIds.filter(
         (edgeId) => !deletedEdges.some((edge) => edge.id === edgeId),
-      ),
-    )
-  }
-
-  const handleNodesDelete = (
-    rungId: string,
-    deletedNodes: Array<Node<LadderNodeData | RailNodeData>>,
-  ) => {
-    if (!canEdit) {
-      return
-    }
-
-    const deletedElementNodes = deletedNodes.filter((node) => !isRailId(node.id))
-
-    clearSelection()
-    setProject((currentProject) =>
-      deletedElementNodes.reduce(
-        (nextProject, node) =>
-          removeElement(nextProject, rungId, node.id, { reconnect: false }),
-        currentProject,
       ),
     )
   }
@@ -647,6 +687,7 @@ export function LadderEditor({
           rung,
           project,
           selectedElementIds,
+          draftPositions,
           simulationStatus,
           simulationState,
           t,
@@ -655,6 +696,7 @@ export function LadderEditor({
       })),
     [
       project,
+      draftPositions,
       selectedElementIds,
       selectedEdgeIds,
       simulationState,
@@ -746,6 +788,7 @@ export function LadderEditor({
                   }
                 }}
                 onNodesChange={handleNodesChange}
+                onNodeDragStop={(_event, node) => handleNodeDragStop(node)}
                 onInit={(flowInstance) => {
                   flowInstancesRef.current.set(rung.id, flowInstance)
                 }}
