@@ -207,12 +207,12 @@
   position: relative;
   display: grid;
   grid-template-columns: 72px minmax(560px, 1fr);
-  grid-template-rows: auto auto;
+  grid-template-rows: auto auto auto auto;
   align-items: start;
   column-gap: 14px;
   min-width: 650px;
-  min-height: 118px;
-  padding-bottom: 14px;
+  min-height: 250px;
+  padding-bottom: 18px;
 }
 
 .ladder-rung__meta {
@@ -236,6 +236,66 @@
   align-self: center;
   height: 3px;
   background: var(--ladder-line);
+}
+
+.rung-flow {
+  position: relative;
+  z-index: 1;
+  grid-column: 2;
+  grid-row: 1;
+  height: 190px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--canvas-bg);
+}
+
+.rung-flow .react-flow__pane {
+  cursor: default;
+}
+
+.rung-flow .react-flow__edge-path {
+  stroke: var(--ladder-line);
+  stroke-width: 2;
+}
+
+.rung-flow .react-flow__edge.selected .react-flow__edge-path {
+  stroke: var(--accent);
+}
+
+.rung-flow .react-flow__controls {
+  box-shadow: none;
+}
+
+.rung-flow .react-flow__controls-button {
+  border-color: var(--border);
+  background: var(--panel-bg);
+}
+
+.ladder-flow-node {
+  position: relative;
+  min-width: 128px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--panel-bg);
+  color: var(--text);
+  padding: 8px 12px;
+  font-family: var(--mono);
+  font-size: 13px;
+  text-align: center;
+}
+
+.ladder-flow-node--selected {
+  border-color: var(--accent);
+  color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.12);
+}
+
+.ladder-flow-node .react-flow__handle {
+  width: 9px;
+  height: 9px;
+  border: 2px solid var(--panel-bg);
+  background: var(--accent);
 }
 
 .ladder-elements {
@@ -292,13 +352,13 @@
 
 .rung-actions {
   grid-column: 2;
-  grid-row: 2;
+  grid-row: 3;
   flex-wrap: wrap;
 }
 
 .rung-debug {
   grid-column: 2;
-  grid-row: 3;
+  grid-row: 4;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -312,6 +372,13 @@
 .rung-debug strong {
   color: var(--text);
   font-weight: 700;
+}
+
+.rung-element-editor {
+  grid-column: 2;
+  grid-row: 2;
+  justify-self: start;
+  margin-top: 8px;
 }
 
 .editor-actions {

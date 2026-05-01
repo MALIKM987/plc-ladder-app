@@ -117,6 +117,7 @@ export function removeElement(
   project: Project,
   rungId: string,
   elementId: string,
+  options: { reconnect?: boolean } = { reconnect: true },
 ): Project {
   return {
     ...project,
@@ -140,6 +141,7 @@ export function removeElement(
         .map((connection) => ({ ...connection }))
 
       if (
+        options.reconnect !== false &&
         incomingConnection &&
         outgoingConnection &&
         incomingConnection.fromElementId !== outgoingConnection.toElementId
@@ -182,5 +184,92 @@ export function updateElementVariable(
       ),
       connections: rung.connections.map((connection) => ({ ...connection })),
     })),
+  }
+}
+
+export function updateElementPosition(
+  project: Project,
+  elementId: string,
+  position: { x: number; y: number },
+): Project {
+  return {
+    ...project,
+    rungs: project.rungs.map((rung) => ({
+      ...rung,
+      elements: rung.elements.map((element) =>
+        element.id === elementId
+          ? {
+              ...element,
+              position: { ...position },
+            }
+          : cloneElement(element),
+      ),
+      connections: rung.connections.map((connection) => ({ ...connection })),
+    })),
+  }
+}
+
+export function addConnection(
+  project: Project,
+  rungId: string,
+  fromElementId: string,
+  toElementId: string,
+): Project {
+  if (fromElementId === toElementId) {
+    return project
+  }
+
+  return {
+    ...project,
+    rungs: project.rungs.map((rung) => {
+      if (rung.id !== rungId) {
+        return cloneRung(rung)
+      }
+
+      const connectionExists = rung.connections.some(
+        (connection) =>
+          connection.fromElementId === fromElementId &&
+          connection.toElementId === toElementId,
+      )
+
+      if (connectionExists) {
+        return cloneRung(rung)
+      }
+
+      return {
+        ...cloneRung(rung),
+        connections: [
+          ...rung.connections.map((connection) => ({ ...connection })),
+          {
+            id: createId('connection'),
+            fromElementId,
+            toElementId,
+          },
+        ],
+      }
+    }),
+  }
+}
+
+export function removeConnection(
+  project: Project,
+  rungId: string,
+  connectionId: string,
+): Project {
+  return {
+    ...project,
+    rungs: project.rungs.map((rung) => {
+      if (rung.id !== rungId) {
+        return cloneRung(rung)
+      }
+
+      return {
+        ...rung,
+        elements: rung.elements.map(cloneElement),
+        connections: rung.connections
+          .filter((connection) => connection.id !== connectionId)
+          .map((connection) => ({ ...connection })),
+      }
+    }),
   }
 }
