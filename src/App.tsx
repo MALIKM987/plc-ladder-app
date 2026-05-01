@@ -10,17 +10,20 @@ import {
 import { BlockLibrary } from './components/BlockLibrary'
 import { BottomPanel } from './components/BottomPanel'
 import { LadderEditor } from './components/LadderEditor'
+import { OnboardingOverlay } from './components/OnboardingOverlay'
 import { SimulationPanel } from './components/SimulationPanel'
 import { TopBar } from './components/TopBar'
-import { demoProject } from './data/demoProject'
+import { ToastViewport, type ToastMessage } from './components/ToastViewport'
 import { exportProjectToStructuredText } from './export/stExport'
 import type { Language } from './i18n/translations'
 import { useTranslation } from './i18n/useTranslation'
+import { demoProject } from './project/demoProject'
 import { migrateProject } from './project/migrateProject'
 import { resetSimulationProject } from './project/projectActions'
 import { simulateProjectWithState } from './simulator/simulate'
 import type { SimulationState } from './simulator/simulationState'
 import type { Project } from './types/project'
+import { validateProject } from './validation/validateProject'
 import './App.css'
 
 type SimulationStatus = 'RUN' | 'STOP'
@@ -30,6 +33,7 @@ const SCAN_INTERVAL_MS = 200
 const THEME_STORAGE_KEY = 'plc-ladder-theme'
 const LANGUAGE_STORAGE_KEY = 'plc-ladder-language'
 const DEBUG_STORAGE_KEY = 'plc-ladder-show-debug'
+const ONBOARDING_STORAGE_KEY = 'plc-ladder-onboarding-dismissed'
 const HISTORY_LIMIT = 60
 
 function downloadTextFile(fileName: string, content: string, type: string) {
@@ -53,9 +57,18 @@ function isFormTarget(target: EventTarget | null) {
   return ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)
 }
 
+function safeMigrateProject(rawProject: unknown) {
+  try {
+    return migrateProject(rawProject)
+  } catch (error) {
+    console.error('Project migration failed', error)
+    return migrateProject({})
+  }
+}
+
 function App() {
   const [project, setProjectState] = useState<Project>(() =>
-    migrateProject(demoProject),
+    safeMigrateProject(demoProject),
   )
   const [undoStack, setUndoStack] = useState<Project[]>([])
   const [redoStack, setRedoStack] = useState<Project[]>([])
@@ -73,9 +86,27 @@ function App() {
   const [showDebug, setShowDebug] = useState(
     () => localStorage.getItem(DEBUG_STORAGE_KEY) === 'true',
   )
+  const [showOnboarding, setShowOnboarding] = useState(
+    () => localStorage.getItem(ONBOARDING_STORAGE_KEY) !== 'true',
+  )
+  const [toasts, setToasts] = useState<ToastMessage[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
   const projectRef = useRef(project)
   const { t } = useTranslation(language)
+
+  const showToast = useCallback((message: string) => {
+    const toast: ToastMessage = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      message,
+    }
+
+    setToasts((currentToasts) => [...currentToasts, toast])
+    window.setTimeout(() => {
+      setToasts((currentToasts) =>
+        currentToasts.filter((currentToast) => currentToast.id !== toast.id),
+      )
+    }, 3200)
+  }, [])
 
   useEffect(() => {
     projectRef.current = project
@@ -233,9 +264,16 @@ function App() {
   }, [handleRedo, handleUndo])
 
   const handleNewProject = () => {
-    setProjectState(migrateProject(demoProject))
+    setProjectState(safeMigrateProject(demoProject))
     resetRuntimeState()
     resetHistory()
+  }
+
+  const handleLoadDemo = () => {
+    setProjectState(safeMigrateProject(demoProject))
+    resetRuntimeState()
+    resetHistory()
+    showToast(t('demoLoaded'))
   }
 
   const handleOpenProject = () => {
@@ -254,35 +292,54 @@ function App() {
 
     try {
       const fileContent = await file.text()
-      const loadedProject = migrateProject(JSON.parse(fileContent))
+      const loadedProject = safeMigrateProject(JSON.parse(fileContent))
 
       setProjectState(loadedProject)
       resetRuntimeState()
       resetHistory()
     } catch {
-      window.alert('Nie udalo sie wczytac projektu PLC Ladder.')
+      window.alert(t('invalidProjectFile'))
+      showToast(t('invalidProjectFile'))
     } finally {
       event.target.value = ''
     }
   }
 
   const handleSaveProject = () => {
-    downloadTextFile(
-      'project.plclad',
-      JSON.stringify(project, null, 2),
-      'application/json',
-    )
+    try {
+      downloadTextFile(
+        'project.plclad',
+        JSON.stringify(project, null, 2),
+        'application/json',
+      )
+      showToast(t('projectSaved'))
+    } catch (error) {
+      console.error('Project save failed', error)
+      window.alert(t('projectSaveFailed'))
+    }
   }
 
   const handleExportStructuredText = () => {
-    downloadTextFile(
-      'project.st',
-      exportProjectToStructuredText(project),
-      'text/plain',
-    )
+    try {
+      downloadTextFile(
+        'project.st',
+        exportProjectToStructuredText(project),
+        'text/plain',
+      )
+    } catch (error) {
+      console.error('Structured Text export failed', error)
+      window.alert(t('exportFailed'))
+      showToast(t('exportFailed'))
+    }
   }
 
   const handleRunSimulation = () => {
+    if (
+      validateProject(project).some((issue) => issue.severity === 'error')
+    ) {
+      showToast(t('validationError'))
+    }
+
     setSimulationStatus('RUN')
     setScanCount(0)
     executeScan()
@@ -300,6 +357,12 @@ function App() {
   const handleResetSimulation = () => {
     setProjectState((currentProject) => resetSimulationProject(currentProject))
     resetRuntimeState()
+    showToast(t('simulationResetDone'))
+  }
+
+  const handleCloseOnboarding = () => {
+    localStorage.setItem(ONBOARDING_STORAGE_KEY, 'true')
+    setShowOnboarding(false)
   }
 
   return (
@@ -313,6 +376,7 @@ function App() {
         onThemeChange={setTheme}
         onShowDebugChange={setShowDebug}
         onNewProject={handleNewProject}
+        onLoadDemo={handleLoadDemo}
         onOpenProject={handleOpenProject}
         onSaveProject={handleSaveProject}
         onExportStructuredText={handleExportStructuredText}
@@ -343,6 +407,7 @@ function App() {
           scanCount={scanCount}
           scanIntervalMs={SCAN_INTERVAL_MS}
           simulationState={simulationState}
+          showDebug={showDebug}
           t={t}
         />
       </main>
@@ -351,6 +416,7 @@ function App() {
         project={project}
         setProject={setProjectWithHistory}
         simulationStatus={simulationStatus}
+        onNotify={showToast}
         t={t}
       />
 
@@ -361,6 +427,10 @@ function App() {
         className="file-input"
         onChange={handleProjectFileSelected}
       />
+      {showOnboarding && (
+        <OnboardingOverlay t={t} onClose={handleCloseOnboarding} />
+      )}
+      <ToastViewport toasts={toasts} />
     </div>
   )
 }

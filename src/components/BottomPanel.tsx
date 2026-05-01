@@ -8,6 +8,7 @@ type BottomPanelProps = {
   project: Project
   setProject: Dispatch<SetStateAction<Project>>
   simulationStatus: 'RUN' | 'STOP'
+  onNotify: (message: string) => void
   t: (key: TranslationKey) => string
 }
 
@@ -15,6 +16,7 @@ export function BottomPanel({
   project,
   setProject,
   simulationStatus,
+  onNotify,
   t,
 }: BottomPanelProps) {
   return (
@@ -23,6 +25,7 @@ export function BottomPanel({
         project={project}
         setProject={setProject}
         simulationStatus={simulationStatus}
+        onNotify={onNotify}
         t={t}
       />
       <ValidationPanel project={project} t={t} />

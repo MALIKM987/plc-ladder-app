@@ -11,6 +11,7 @@ type TopBarProps = {
   onThemeChange: (theme: Theme) => void
   onShowDebugChange: (showDebug: boolean) => void
   onNewProject: () => void
+  onLoadDemo: () => void
   onOpenProject: () => void
   onSaveProject: () => void
   onExportStructuredText: () => void
@@ -33,6 +34,7 @@ export function TopBar({
   onThemeChange,
   onShowDebugChange,
   onNewProject,
+  onLoadDemo,
   onOpenProject,
   onSaveProject,
   onExportStructuredText,
@@ -67,6 +69,9 @@ export function TopBar({
           <div className="app-menu__items">
             <button type="button" onClick={onNewProject}>
               {t('new')}
+            </button>
+            <button type="button" onClick={onLoadDemo}>
+              {t('loadDemo')}
             </button>
             <button type="button" onClick={onOpenProject}>
               {t('open')}
@@ -125,7 +130,7 @@ export function TopBar({
               type="button"
               onClick={() => onShowDebugChange(!showDebug)}
             >
-              {showDebug ? t('hideDebug') : t('showDebug')}
+              {showDebug ? t('debugOff') : t('debugOn')}
             </button>
             <label className="app-menu__select">
               {t('language')}

@@ -10,6 +10,7 @@ type SimulationPanelProps = {
   scanCount: number
   scanIntervalMs: number
   simulationState: SimulationState | null
+  showDebug: boolean
   t: (key: TranslationKey) => string
 }
 
@@ -28,6 +29,7 @@ export function SimulationPanel({
   scanCount,
   scanIntervalMs,
   simulationState,
+  showDebug,
   t,
 }: SimulationPanelProps) {
   const toggleInputValue = (variableId: string) => {
@@ -104,24 +106,34 @@ export function SimulationPanel({
         })}
       </div>
 
-      <div className="debug-panel">
-        <div className="panel__header panel__header--compact">
-          <h3>{t('debugPanel')}</h3>
+      {showDebug && (
+        <div className="debug-panel">
+          <div className="panel__header panel__header--compact">
+            <h3>{t('debugPanel')}</h3>
+          </div>
+          <dl className="debug-panel__grid">
+            <dt>{t('scan')}</dt>
+            <dd>{scanCount}</dd>
+            <dt>{t('activeElements')}</dt>
+            <dd>{simulationState?.activeElementIds.length ?? 0}</dd>
+            <dt>{t('activeConnections')}</dt>
+            <dd>{simulationState?.activeConnectionIds.length ?? 0}</dd>
+          </dl>
+          <div className="debug-panel__details">
+            <strong>{t('value')}</strong>
+            {project.variables.map((variable) => (
+              <span key={variable.id}>
+                {variable.name}: {formatValue(variable.value)}
+              </span>
+            ))}
+          </div>
+          {simulationState?.breakpointRungId && (
+            <p className="debug-panel__breakpoint">
+              {t('breakpointHit')}: {simulationState.breakpointRungId}
+            </p>
+          )}
         </div>
-        <dl className="debug-panel__grid">
-          <dt>{t('scan')}</dt>
-          <dd>{scanCount}</dd>
-          <dt>{t('activeElements')}</dt>
-          <dd>{simulationState?.activeElementIds.length ?? 0}</dd>
-          <dt>{t('activeConnections')}</dt>
-          <dd>{simulationState?.activeConnectionIds.length ?? 0}</dd>
-        </dl>
-        {simulationState?.breakpointRungId && (
-          <p className="debug-panel__breakpoint">
-            {t('breakpointHit')}: {simulationState.breakpointRungId}
-          </p>
-        )}
-      </div>
+      )}
     </aside>
   )
 }

@@ -13,6 +13,7 @@ type VariableTableProps = {
   project: Project
   setProject: Dispatch<SetStateAction<Project>>
   simulationStatus: 'RUN' | 'STOP'
+  onNotify?: (message: string) => void
   t: (key: TranslationKey) => string
 }
 
@@ -35,6 +36,7 @@ export function VariableTable({
   project,
   setProject,
   simulationStatus,
+  onNotify,
   t,
 }: VariableTableProps) {
   const readOnly = simulationStatus === 'RUN'
@@ -45,7 +47,7 @@ export function VariableTable({
     }
 
     if (isVariableUsed(project, variableId)) {
-      window.alert(t('cannotDeleteUsedVariable'))
+      onNotify?.(t('cannotDeleteUsedVariable'))
       return
     }
 
