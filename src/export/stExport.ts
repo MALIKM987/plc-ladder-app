@@ -1,4 +1,4 @@
-import { LEFT_RAIL_ID } from '../constants/rails'
+import { LEFT_RAIL_ID, RIGHT_RAIL_ID } from '../constants/rails'
 import {
   isCounterElement,
   isOutputOnlyElement,
@@ -7,7 +7,6 @@ import {
 import type { LadderElement, Project, Rung, Variable } from '../types/project'
 
 type ExportContext = {
-  project: Project
   variablesById: Map<string, Variable>
   emittedBlocks: Set<string>
   blockLines: string[]
@@ -30,15 +29,35 @@ function getElement(rung: Rung, elementId: string) {
 }
 
 function joinOr(expressions: string[]) {
-  if (expressions.length === 0) {
+  const meaningfulExpressions = expressions.filter(
+    (expression) => expression !== 'FALSE',
+  )
+
+  if (meaningfulExpressions.length === 0) {
     return 'FALSE'
   }
 
-  if (expressions.length === 1) {
-    return expressions[0]
+  if (meaningfulExpressions.length === 1) {
+    return meaningfulExpressions[0]
   }
 
-  return expressions.map((expression) => `(${expression})`).join(' OR ')
+  return meaningfulExpressions.join(' OR ')
+}
+
+function joinAnd(leftExpression: string, rightExpression: string) {
+  if (leftExpression === 'FALSE' || rightExpression === 'FALSE') {
+    return 'FALSE'
+  }
+
+  if (leftExpression === 'TRUE') {
+    return rightExpression
+  }
+
+  if (rightExpression === 'TRUE') {
+    return leftExpression
+  }
+
+  return `${leftExpression} AND ${rightExpression}`
 }
 
 function getInputExpression(
@@ -121,11 +140,11 @@ function getElementExpression(
   let expression = inputExpression
 
   if (element.type === 'NO_CONTACT') {
-    expression = `${inputExpression} AND ${variableName}`
+    expression = joinAnd(inputExpression, variableName)
   }
 
   if (element.type === 'NC_CONTACT') {
-    expression = `${inputExpression} AND NOT ${variableName}`
+    expression = joinAnd(inputExpression, `NOT ${variableName}`)
   }
 
   if (isTimerElement(element.type) || isCounterElement(element.type)) {
@@ -157,7 +176,7 @@ function exportRung(rung: Rung, context: ExportContext) {
       rung.connections.some(
         (connection) =>
           connection.fromElementId === element.id &&
-          connection.toElementId === '__RIGHT_RAIL__',
+          connection.toElementId === RIGHT_RAIL_ID,
       )
     ) {
       const inputExpression = getInputExpression(element, rung, context)
@@ -192,7 +211,6 @@ export function exportProjectToStructuredText(project: Project) {
   return project.rungs
     .map((rung) =>
       exportRung(rung, {
-        project,
         variablesById,
         emittedBlocks: new Set(),
         blockLines: [],

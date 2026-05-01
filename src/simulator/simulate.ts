@@ -134,11 +134,14 @@ function evaluateTimer(
     variable.presetMs = presetMs
 
     if (risingEdge && !wasRunning) {
-      variable.elapsedMs = 0
-      variable.done = true
-      variable.value = true
+      const elapsedMs = Math.min(presetMs, context.scanDeltaMs)
+      const done = elapsedMs < presetMs
+
+      variable.elapsedMs = elapsedMs
+      variable.done = done
+      variable.value = done
       variable.previousInput = inputSignal
-      return true
+      return done
     }
 
     if (wasRunning) {
