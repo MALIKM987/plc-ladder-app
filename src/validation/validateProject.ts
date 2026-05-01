@@ -99,22 +99,6 @@ function validateRungConnections(rung: Rung): ValidationIssue[] {
     const incomingCount = incomingByElementId.get(element.id)?.length ?? 0
     const outgoingCount = outgoingByElementId.get(element.id)?.length ?? 0
 
-    if (incomingCount > 1) {
-      issues.push({
-        id: `element-${element.id}-multiple-incoming`,
-        severity: 'error',
-        message: `Element ${element.id} ma więcej niż jedno połączenie wejściowe.`,
-      })
-    }
-
-    if (outgoingCount > 1) {
-      issues.push({
-        id: `element-${element.id}-multiple-outgoing`,
-        severity: 'error',
-        message: `Element ${element.id} ma więcej niż jedno połączenie wyjściowe.`,
-      })
-    }
-
     if (
       rung.elements.length > 2 &&
       element.id !== firstElementId &&
