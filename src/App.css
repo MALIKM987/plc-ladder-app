@@ -457,13 +457,20 @@
 
 .simulation-summary {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   justify-content: space-between;
+  gap: 12px;
   margin: 16px;
   padding: 14px;
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--canvas-bg);
+}
+
+.simulation-summary__item {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
 }
 
 .simulation-summary span,

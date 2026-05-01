@@ -5,6 +5,8 @@ type SimulationPanelProps = {
   project: Project
   setProject: Dispatch<SetStateAction<Project>>
   simulationStatus: 'RUN' | 'STOP'
+  scanCount: number
+  scanIntervalMs: number
 }
 
 function isInputVariable(variable: Variable) {
@@ -19,6 +21,8 @@ export function SimulationPanel({
   project,
   setProject,
   simulationStatus,
+  scanCount,
+  scanIntervalMs,
 }: SimulationPanelProps) {
   const toggleInputValue = (variableId: string) => {
     setProject((currentProject) => ({
@@ -38,16 +42,26 @@ export function SimulationPanel({
       </div>
 
       <div className="simulation-summary">
-        <span>Status</span>
-        <strong
-          className={
-            simulationStatus === 'RUN'
-              ? 'simulation-summary__status--run'
-              : 'simulation-summary__status--stop'
-          }
-        >
-          {simulationStatus === 'RUN' ? 'RUN' : 'STOP'}
-        </strong>
+        <div className="simulation-summary__item">
+          <span>Status</span>
+          <strong
+            className={
+              simulationStatus === 'RUN'
+                ? 'simulation-summary__status--run'
+                : 'simulation-summary__status--stop'
+            }
+          >
+            {simulationStatus === 'RUN' ? 'RUN' : 'STOP'}
+          </strong>
+        </div>
+        <div className="simulation-summary__item">
+          <span>Scan interval</span>
+          <strong>{scanIntervalMs} ms</strong>
+        </div>
+        <div className="simulation-summary__item">
+          <span>Scan</span>
+          <strong>{scanCount}</strong>
+        </div>
       </div>
 
       <div className="signal-list">

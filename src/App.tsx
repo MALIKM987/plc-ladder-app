@@ -1,4 +1,10 @@
-import { type ChangeEvent, useRef, useState } from 'react'
+import {
+  type ChangeEvent,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react'
 import { BlockLibrary } from './components/BlockLibrary'
 import { BottomPanel } from './components/BottomPanel'
 import { LadderEditor } from './components/LadderEditor'
@@ -11,6 +17,7 @@ import type { Project } from './types/project'
 import './App.css'
 
 type SimulationStatus = 'RUN' | 'STOP'
+const SCAN_INTERVAL_MS = 200
 
 function App() {
   const [project, setProject] = useState<Project>(demoProject)
@@ -18,15 +25,42 @@ function App() {
     useState<SimulationStatus>('STOP')
   const [simulationState, setSimulationState] =
     useState<SimulationState | null>(null)
+  const [scanCount, setScanCount] = useState(0)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const executeScan = useCallback(() => {
+    setProject((currentProject) => {
+      const result = simulateProjectWithState(currentProject)
+
+      setSimulationState(result.state)
+      return result.project
+    })
+    setScanCount((currentScanCount) => currentScanCount + 1)
+  }, [])
+
+  useEffect(() => {
+    if (simulationStatus !== 'RUN') {
+      return undefined
+    }
+
+    const scanIntervalId = window.setInterval(executeScan, SCAN_INTERVAL_MS)
+
+    return () => {
+      window.clearInterval(scanIntervalId)
+    }
+  }, [executeScan, simulationStatus])
 
   const handleNewProject = () => {
     setProject(structuredClone(demoProject))
     setSimulationStatus('STOP')
     setSimulationState(null)
+    setScanCount(0)
   }
 
   const handleOpenProject = () => {
+    setSimulationStatus('STOP')
+    setSimulationState(null)
+    setScanCount(0)
     fileInputRef.current?.click()
   }
 
@@ -45,6 +79,7 @@ function App() {
       setProject(loadedProject)
       setSimulationStatus('STOP')
       setSimulationState(null)
+      setScanCount(0)
     } catch {
       window.alert('Nie udało się wczytać projektu PLC Ladder.')
     } finally {
@@ -67,16 +102,15 @@ function App() {
   }
 
   const handleRunSimulation = () => {
-    const result = simulateProjectWithState(project)
-
     setSimulationStatus('RUN')
-    setProject(result.project)
-    setSimulationState(result.state)
+    setScanCount(0)
+    executeScan()
   }
 
   const handleStopSimulation = () => {
     setSimulationStatus('STOP')
     setSimulationState(null)
+    setScanCount(0)
   }
 
   return (
@@ -101,6 +135,8 @@ function App() {
           project={project}
           setProject={setProject}
           simulationStatus={simulationStatus}
+          scanCount={scanCount}
+          scanIntervalMs={SCAN_INTERVAL_MS}
         />
       </main>
 
