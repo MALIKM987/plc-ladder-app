@@ -86,6 +86,7 @@ function validateRungConnections(rung: Rung): ValidationIssue[] {
   const startElements = rung.elements.filter(
     (element) => (incomingByElementId.get(element.id)?.length ?? 0) === 0,
   )
+  const hasCoil = rung.elements.some((element) => element.type === 'COIL')
 
   if (rung.elements.length > 0 && startElements.length === 0) {
     issues.push({
@@ -98,6 +99,22 @@ function validateRungConnections(rung: Rung): ValidationIssue[] {
   for (const element of rung.elements) {
     const incomingCount = incomingByElementId.get(element.id)?.length ?? 0
     const outgoingCount = outgoingByElementId.get(element.id)?.length ?? 0
+
+    if (element.type === 'COIL' && outgoingCount > 0) {
+      issues.push({
+        id: `coil-${element.id}-has-output`,
+        severity: 'error',
+        message: `Cewka w szczeblu ${rung.number} nie mo\u017ce sterowa\u0107 kolejnym elementem.`,
+      })
+    }
+
+    if (element.type !== 'COIL' && hasCoil && outgoingCount === 0) {
+      issues.push({
+        id: `contact-${element.id}-not-connected-to-coil`,
+        severity: 'warning',
+        message: `Kontakt w szczeblu ${rung.number} nie jest po\u0142\u0105czony z cewk\u0105.`,
+      })
+    }
 
     if (
       rung.elements.length > 2 &&
@@ -152,13 +169,24 @@ export function validateProject(project: Project): ValidationIssue[] {
   }
 
   for (const rung of project.rungs) {
-    const hasCoil = rung.elements.some((element) => element.type === 'COIL')
+    const coilCount = rung.elements.filter(
+      (element) => element.type === 'COIL',
+    ).length
+    const hasCoil = coilCount > 0
 
     if (!hasCoil) {
       issues.push({
         id: `rung-${rung.id}-missing-coil`,
         severity: 'warning',
         message: `Szczebel ${rung.number} nie zawiera cewki.`,
+      })
+    }
+
+    if (coilCount > 1) {
+      issues.push({
+        id: `rung-${rung.id}-multiple-coils`,
+        severity: 'warning',
+        message: `Szczebel ${rung.number} zawiera wi\u0119cej ni\u017c jedn\u0105 cewk\u0119.`,
       })
     }
 

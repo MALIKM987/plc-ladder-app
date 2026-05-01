@@ -5,7 +5,8 @@ import { LadderEditor } from './components/LadderEditor'
 import { SimulationPanel } from './components/SimulationPanel'
 import { TopBar } from './components/TopBar'
 import { demoProject } from './data/demoProject'
-import { simulateProject } from './simulator/simulate'
+import { simulateProjectWithState } from './simulator/simulate'
+import type { SimulationState } from './simulator/simulationState'
 import type { Project } from './types/project'
 import './App.css'
 
@@ -15,11 +16,14 @@ function App() {
   const [project, setProject] = useState<Project>(demoProject)
   const [simulationStatus, setSimulationStatus] =
     useState<SimulationStatus>('STOP')
+  const [simulationState, setSimulationState] =
+    useState<SimulationState | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleNewProject = () => {
     setProject(structuredClone(demoProject))
     setSimulationStatus('STOP')
+    setSimulationState(null)
   }
 
   const handleOpenProject = () => {
@@ -40,6 +44,7 @@ function App() {
       const loadedProject = JSON.parse(fileContent) as Project
       setProject(loadedProject)
       setSimulationStatus('STOP')
+      setSimulationState(null)
     } catch {
       window.alert('Nie udało się wczytać projektu PLC Ladder.')
     } finally {
@@ -62,12 +67,16 @@ function App() {
   }
 
   const handleRunSimulation = () => {
+    const result = simulateProjectWithState(project)
+
     setSimulationStatus('RUN')
-    setProject((currentProject) => simulateProject(currentProject))
+    setProject(result.project)
+    setSimulationState(result.state)
   }
 
   const handleStopSimulation = () => {
     setSimulationStatus('STOP')
+    setSimulationState(null)
   }
 
   return (
@@ -86,6 +95,7 @@ function App() {
           project={project}
           setProject={setProject}
           simulationStatus={simulationStatus}
+          simulationState={simulationState}
         />
         <SimulationPanel
           project={project}

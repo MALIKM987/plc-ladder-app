@@ -4,6 +4,7 @@ import type { ElementType } from '../types/project'
 export type LadderNodeData = {
   elementType: ElementType
   variableName: string
+  isActive: boolean
 }
 
 function getNodeLabel(type: ElementType, variableName: string) {
@@ -24,9 +25,17 @@ export function LadderNode({
   isConnectable,
   selected,
 }: NodeProps<LadderNodeData>) {
+  const className = [
+    'ladder-flow-node',
+    selected ? 'ladder-flow-node--selected' : '',
+    data.isActive ? 'ladder-flow-node--active' : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
+
   return (
     <div
-      className={`ladder-flow-node ${selected ? 'ladder-flow-node--selected' : ''}`}
+      className={className}
       data-testid={`ladder-node-${id}`}
     >
       <Handle

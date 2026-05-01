@@ -1,4 +1,11 @@
 import type { LadderElement, Project, Rung, Variable } from '../types/project'
+import type { SimulationState } from './simulationState'
+
+type SimulationTrace = {
+  activeElementIds: Set<string>
+  activeConnectionIds: Set<string>
+  coilValues: Record<string, boolean>
+}
 
 function cloneProject(project: Project): Project {
   return {
@@ -46,6 +53,7 @@ export function evaluateElement(
   variables: Map<string, Variable>,
   visited: Set<string>,
   memo = new Map<string, boolean>(),
+  trace?: SimulationTrace,
 ): boolean {
   if (memo.has(elementId)) {
     return memo.get(elementId) ?? false
@@ -66,19 +74,29 @@ export function evaluateElement(
   const incomingConnections = rung.connections.filter(
     (connection) => connection.toElementId === elementId,
   )
-  const inputSignal =
-    incomingConnections.length === 0
-      ? true
-      : incomingConnections.some((connection) =>
-          evaluateElement(
-            connection.fromElementId,
-            rung,
-            variables,
-            visited,
-            memo,
-          ),
-        )
+  let inputSignal = incomingConnections.length === 0
+
+  for (const connection of incomingConnections) {
+    const parentResult = evaluateElement(
+      connection.fromElementId,
+      rung,
+      variables,
+      visited,
+      memo,
+      trace,
+    )
+
+    if (parentResult) {
+      inputSignal = true
+      trace?.activeConnectionIds.add(connection.id)
+    }
+  }
+
   const result = evaluateElementSignal(element, inputSignal, variables)
+
+  if (result) {
+    trace?.activeElementIds.add(element.id)
+  }
 
   visited.delete(elementId)
   memo.set(elementId, result)
@@ -86,16 +104,31 @@ export function evaluateElement(
   return result
 }
 
-export function evaluateRung(rung: Rung, variables: Map<string, Variable>) {
+export function evaluateRung(
+  rung: Rung,
+  variables: Map<string, Variable>,
+  trace?: SimulationTrace,
+) {
   let rungResult = false
   const coils = rung.elements.filter((element) => element.type === 'COIL')
 
   for (const coil of coils) {
-    const result = evaluateElement(coil.id, rung, variables, new Set())
+    const result = evaluateElement(
+      coil.id,
+      rung,
+      variables,
+      new Set(),
+      new Map(),
+      trace,
+    )
     const variable = getVariable(variables, coil)
 
     if (variable) {
       variable.value = result
+    }
+
+    if (trace) {
+      trace.coilValues[coil.id] = result
     }
 
     rungResult = rungResult || result
@@ -104,15 +137,34 @@ export function evaluateRung(rung: Rung, variables: Map<string, Variable>) {
   return rungResult
 }
 
-export function simulateProject(project: Project): Project {
+export function simulateProjectWithState(project: Project): {
+  project: Project
+  state: SimulationState
+} {
   const nextProject = cloneProject(project)
   const variablesById = new Map(
     nextProject.variables.map((variable) => [variable.id, variable]),
   )
-
-  for (const rung of nextProject.rungs) {
-    evaluateRung(rung, variablesById)
+  const trace: SimulationTrace = {
+    activeElementIds: new Set(),
+    activeConnectionIds: new Set(),
+    coilValues: {},
   }
 
-  return nextProject
+  for (const rung of nextProject.rungs) {
+    evaluateRung(rung, variablesById, trace)
+  }
+
+  return {
+    project: nextProject,
+    state: {
+      activeElementIds: [...trace.activeElementIds],
+      activeConnectionIds: [...trace.activeConnectionIds],
+      coilValues: trace.coilValues,
+    },
+  }
+}
+
+export function simulateProject(project: Project): Project {
+  return simulateProjectWithState(project).project
 }

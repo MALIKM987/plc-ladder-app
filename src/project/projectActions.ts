@@ -39,6 +39,48 @@ function getLastElement(rung: Rung) {
   )[rung.elements.length - 1]
 }
 
+export function wouldCreateCycle(
+  rung: Rung,
+  fromElementId: string,
+  toElementId: string,
+) {
+  if (fromElementId === toElementId) {
+    return true
+  }
+
+  const outgoingByElementId = new Map<string, string[]>()
+
+  for (const element of rung.elements) {
+    outgoingByElementId.set(element.id, [])
+  }
+
+  for (const connection of rung.connections) {
+    outgoingByElementId
+      .get(connection.fromElementId)
+      ?.push(connection.toElementId)
+  }
+
+  const visited = new Set<string>()
+  const stack = [toElementId]
+
+  while (stack.length > 0) {
+    const currentElementId = stack.pop()
+
+    if (!currentElementId || visited.has(currentElementId)) {
+      continue
+    }
+
+    if (currentElementId === fromElementId) {
+      return true
+    }
+
+    visited.add(currentElementId)
+    stack.push(...(outgoingByElementId.get(currentElementId) ?? []))
+  }
+
+  return false
+}
+
 export function addRung(project: Project): Project {
   const nextNumber =
     Math.max(0, ...project.rungs.map((rung) => rung.number)) + 1
@@ -98,7 +140,7 @@ export function addElement(
       return {
         ...clonedRung,
         elements: [...clonedRung.elements, newElement],
-        connections: lastElement
+        connections: lastElement && lastElement.type !== 'COIL'
           ? [
               ...clonedRung.connections,
               {
@@ -139,12 +181,35 @@ export function removeElement(
             connection.toElementId !== elementId,
         )
         .map((connection) => ({ ...connection }))
+      const nextElements = rung.elements
+        .filter((element) => element.id !== elementId)
+        .map(cloneElement)
+      const reconnectFromElement = nextElements.find(
+        (element) => element.id === incomingConnection?.fromElementId,
+      )
+      const reconnectExists = nextConnections.some(
+        (connection) =>
+          connection.fromElementId === incomingConnection?.fromElementId &&
+          connection.toElementId === outgoingConnection?.toElementId,
+      )
+      const rungAfterRemoval: Rung = {
+        ...rung,
+        elements: nextElements,
+        connections: nextConnections,
+      }
 
       if (
         options.reconnect !== false &&
         incomingConnection &&
         outgoingConnection &&
-        incomingConnection.fromElementId !== outgoingConnection.toElementId
+        reconnectFromElement?.type !== 'COIL' &&
+        incomingConnection.fromElementId !== outgoingConnection.toElementId &&
+        !reconnectExists &&
+        !wouldCreateCycle(
+          rungAfterRemoval,
+          incomingConnection.fromElementId,
+          outgoingConnection.toElementId,
+        )
       ) {
         nextConnections.push({
           id: createId('connection'),
@@ -155,9 +220,7 @@ export function removeElement(
 
       return {
         ...rung,
-        elements: rung.elements
-          .filter((element) => element.id !== elementId)
-          .map(cloneElement),
+        elements: nextElements,
         connections: nextConnections,
       }
     }),
@@ -231,8 +294,20 @@ export function addConnection(
           connection.fromElementId === fromElementId &&
           connection.toElementId === toElementId,
       )
+      const fromElement = rung.elements.find(
+        (element) => element.id === fromElementId,
+      )
+      const toElement = rung.elements.find(
+        (element) => element.id === toElementId,
+      )
 
-      if (connectionExists) {
+      if (
+        !fromElement ||
+        !toElement ||
+        fromElement.type === 'COIL' ||
+        connectionExists ||
+        wouldCreateCycle(rung, fromElementId, toElementId)
+      ) {
         return cloneRung(rung)
       }
 

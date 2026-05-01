@@ -20,12 +20,14 @@ import {
   updateElementPosition,
   updateElementVariable,
 } from '../project/projectActions'
+import type { SimulationState } from '../simulator/simulationState'
 import type { ElementType, LadderElement, Project, Rung } from '../types/project'
 
 type LadderEditorProps = {
   project: Project
   setProject: Dispatch<SetStateAction<Project>>
   simulationStatus: 'RUN' | 'STOP'
+  simulationState: SimulationState | null
 }
 
 const elementActions: Array<{ label: string; type: ElementType }> = [
@@ -75,6 +77,7 @@ function mapRungToNodes(
   rung: Rung,
   project: Project,
   selectedElementId: string | null,
+  simulationState: SimulationState | null,
 ): Node<LadderNodeData>[] {
   return rung.elements.map((element) => ({
     id: element.id,
@@ -84,16 +87,32 @@ function mapRungToNodes(
     data: {
       elementType: element.type,
       variableName: getVariableName(element.variableId, project),
+      isActive:
+        simulationState?.activeElementIds.includes(element.id) ?? false,
     },
   }))
 }
 
-function mapRungToEdges(rung: Rung, selectedEdgeIds: string[]): Edge[] {
+function mapRungToEdges(
+  rung: Rung,
+  selectedEdgeIds: string[],
+  simulationState: SimulationState | null,
+): Edge[] {
   return rung.connections.map((connection) => ({
     id: connection.id,
     source: connection.fromElementId,
     target: connection.toElementId,
     type: 'smoothstep',
+    animated:
+      simulationState?.activeConnectionIds.includes(connection.id) ?? false,
+    className:
+      simulationState?.activeConnectionIds.includes(connection.id) ?? false
+        ? 'ladder-edge--active'
+        : undefined,
+    style:
+      simulationState?.activeConnectionIds.includes(connection.id) ?? false
+        ? { stroke: '#15803d', strokeWidth: 3 }
+        : undefined,
     selected: selectedEdgeIds.includes(connection.id),
     selectable: true,
     focusable: true,
@@ -105,6 +124,7 @@ export function LadderEditor({
   project,
   setProject,
   simulationStatus,
+  simulationState,
 }: LadderEditorProps) {
   const [selectedElementId, setSelectedElementId] = useState<string | null>(
     null,
@@ -285,10 +305,15 @@ export function LadderEditor({
     () =>
       project.rungs.map((rung) => ({
         rung,
-        nodes: mapRungToNodes(rung, project, selectedElementId),
-        edges: mapRungToEdges(rung, selectedEdgeIds),
+        nodes: mapRungToNodes(
+          rung,
+          project,
+          selectedElementId,
+          simulationState,
+        ),
+        edges: mapRungToEdges(rung, selectedEdgeIds, simulationState),
       })),
-    [project, selectedElementId, selectedEdgeIds],
+    [project, selectedElementId, selectedEdgeIds, simulationState],
   )
 
   return (
