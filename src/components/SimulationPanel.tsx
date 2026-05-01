@@ -1,11 +1,36 @@
-const signalStates = [
-  { name: 'Start', value: 'FALSE' },
-  { name: 'Stop', value: 'FALSE' },
-  { name: 'Motor', value: 'FALSE' },
-  { name: 'Alarm', value: 'FALSE' },
-]
+import type { Dispatch, SetStateAction } from 'react'
+import type { Project, Variable } from '../types/project'
 
-export function SimulationPanel() {
+type SimulationPanelProps = {
+  project: Project
+  setProject: Dispatch<SetStateAction<Project>>
+  simulationStatus: 'RUN' | 'STOP'
+}
+
+function isInputVariable(variable: Variable) {
+  return variable.address.startsWith('%I')
+}
+
+function formatValue(value: boolean) {
+  return value ? 'TRUE' : 'FALSE'
+}
+
+export function SimulationPanel({
+  project,
+  setProject,
+  simulationStatus,
+}: SimulationPanelProps) {
+  const toggleInputValue = (variableId: string) => {
+    setProject((currentProject) => ({
+      ...currentProject,
+      variables: currentProject.variables.map((variable) =>
+        variable.id === variableId
+          ? { ...variable, value: !variable.value }
+          : variable,
+      ),
+    }))
+  }
+
   return (
     <aside className="panel panel--right" aria-labelledby="simulation-panel-title">
       <div className="panel__header">
@@ -14,16 +39,49 @@ export function SimulationPanel() {
 
       <div className="simulation-summary">
         <span>Status</span>
-        <strong>Zatrzymana</strong>
+        <strong
+          className={
+            simulationStatus === 'RUN'
+              ? 'simulation-summary__status--run'
+              : 'simulation-summary__status--stop'
+          }
+        >
+          {simulationStatus === 'RUN' ? 'RUN' : 'STOP'}
+        </strong>
       </div>
 
       <div className="signal-list">
-        {signalStates.map((signal) => (
-          <div key={signal.name} className="signal-row">
-            <span>{signal.name}</span>
-            <code>{signal.value}</code>
-          </div>
-        ))}
+        {project.variables.map((variable) => {
+          const inputVariable = isInputVariable(variable)
+          const content = (
+            <>
+              <span>
+                {variable.name}
+                <small>{variable.address}</small>
+              </span>
+              <code>{formatValue(variable.value)}</code>
+            </>
+          )
+
+          if (inputVariable) {
+            return (
+              <button
+                key={variable.id}
+                type="button"
+                className="signal-row signal-row--input"
+                onClick={() => toggleInputValue(variable.id)}
+              >
+                {content}
+              </button>
+            )
+          }
+
+          return (
+            <div key={variable.id} className="signal-row">
+              {content}
+            </div>
+          )
+        })}
       </div>
     </aside>
   )

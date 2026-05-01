@@ -1,6 +1,31 @@
-const toolbarActions = ['Nowy', 'Otwórz', 'Zapisz', 'Uruchom', 'Stop']
+type ToolbarAction = {
+  label: string
+  onClick: () => void
+}
 
-export function TopBar() {
+type TopBarProps = {
+  onNewProject: () => void
+  onOpenProject: () => void
+  onSaveProject: () => void
+  onRunSimulation: () => void
+  onStopSimulation: () => void
+}
+
+export function TopBar({
+  onNewProject,
+  onOpenProject,
+  onSaveProject,
+  onRunSimulation,
+  onStopSimulation,
+}: TopBarProps) {
+  const toolbarActions: ToolbarAction[] = [
+    { label: 'Nowy', onClick: onNewProject },
+    { label: 'Otwórz', onClick: onOpenProject },
+    { label: 'Zapisz', onClick: onSaveProject },
+    { label: 'Uruchom', onClick: onRunSimulation },
+    { label: 'Stop', onClick: onStopSimulation },
+  ]
+
   return (
     <header className="topbar">
       <div className="topbar__brand">
@@ -15,8 +40,13 @@ export function TopBar() {
 
       <nav className="topbar__actions" aria-label="Akcje projektu">
         {toolbarActions.map((action) => (
-          <button key={action} type="button" className="toolbar-button">
-            {action}
+          <button
+            key={action.label}
+            type="button"
+            className="toolbar-button"
+            onClick={action.onClick}
+          >
+            {action.label}
           </button>
         ))}
       </nav>
