@@ -1,4 +1,11 @@
-import { type Dispatch, type SetStateAction, useMemo, useState } from 'react'
+import {
+  type Dispatch,
+  type DragEvent,
+  type SetStateAction,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import ReactFlow, {
   Background,
   Controls,
@@ -7,9 +14,11 @@ import ReactFlow, {
   type EdgeChange,
   type Node,
   type NodeChange,
+  type ReactFlowInstance,
 } from 'reactflow'
 import 'reactflow/dist/style.css'
-import { LadderNode, type LadderNodeData } from './LadderNode'
+import { LADDER_ELEMENT_DRAG_TYPE } from '../constants/dragDrop'
+import type { TranslationKey } from '../i18n/translations'
 import {
   addConnection,
   addElement,
@@ -18,27 +27,27 @@ import {
   removeElement,
   removeRung,
   updateElementPosition,
-  updateElementVariable,
 } from '../project/projectActions'
 import type { SimulationState } from '../simulator/simulationState'
 import type { ElementType, LadderElement, Project, Rung } from '../types/project'
+import { LadderNode, type LadderNodeData } from './LadderNode'
+import { PropertiesPanel } from './PropertiesPanel'
 
 type LadderEditorProps = {
   project: Project
   setProject: Dispatch<SetStateAction<Project>>
   simulationStatus: 'RUN' | 'STOP'
   simulationState: SimulationState | null
+  showDebug: boolean
+  t: (key: TranslationKey) => string
 }
-
-const elementActions: Array<{ label: string; type: ElementType }> = [
-  { label: '+ Styk NO', type: 'NO_CONTACT' },
-  { label: '+ Styk NC', type: 'NC_CONTACT' },
-  { label: '+ Cewka', type: 'COIL' },
-  { label: '+ Timer TON', type: 'TON' },
-]
 
 const nodeTypes = {
   ladderNode: LadderNode,
+}
+
+function createElementId() {
+  return `element-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 }
 
 function getVariableName(variableId: string, project: Project) {
@@ -68,24 +77,37 @@ function getElementDebugName(
   return `${elementIndex + 1}:${getVariableName(element?.variableId ?? '', project)}`
 }
 
-function getSelectedElement(project: Project, selectedElementId: string | null) {
-  if (!selectedElementId) {
-    return undefined
-  }
+function isElementType(value: string): value is ElementType {
+  return (
+    value === 'NO_CONTACT' ||
+    value === 'NC_CONTACT' ||
+    value === 'COIL' ||
+    value === 'TON'
+  )
+}
 
-  return project.rungs
-    .flatMap((rung) => rung.elements)
-    .find((element) => element.id === selectedElementId)
+function isInputContact(element: LadderElement, project: Project) {
+  const variable = getVariable(element.variableId, project)
+
+  return (
+    (element.type === 'NO_CONTACT' || element.type === 'NC_CONTACT') &&
+    variable?.type === 'BOOL' &&
+    variable.address.startsWith('%I')
+  )
 }
 
 function mapRungToNodes(
   rung: Rung,
   project: Project,
   selectedElementId: string | null,
+  simulationStatus: 'RUN' | 'STOP',
   simulationState: SimulationState | null,
+  t: (key: TranslationKey) => string,
 ): Node<LadderNodeData>[] {
   return rung.elements.map((element) => {
     const variable = getVariable(element.variableId, project)
+    const inputToggleable =
+      simulationStatus === 'RUN' && isInputContact(element, project)
 
     return {
       id: element.id,
@@ -94,9 +116,11 @@ function mapRungToNodes(
       selected: selectedElementId === element.id,
       data: {
         elementType: element.type,
-        variableName: variable?.name ?? 'Brak zmiennej',
+        variableName: variable?.name ?? t('noVariables'),
         isActive:
           simulationState?.activeElementIds.includes(element.id) ?? false,
+        isInputToggleable: inputToggleable,
+        inputToggleTitle: inputToggleable ? t('inputToggleHint') : undefined,
         timerPresetMs: variable?.presetMs,
         timerElapsedMs: variable?.elapsedMs,
         timerDone: variable?.done,
@@ -110,26 +134,24 @@ function mapRungToEdges(
   selectedEdgeIds: string[],
   simulationState: SimulationState | null,
 ): Edge[] {
-  return rung.connections.map((connection) => ({
-    id: connection.id,
-    source: connection.fromElementId,
-    target: connection.toElementId,
-    type: 'smoothstep',
-    animated:
-      simulationState?.activeConnectionIds.includes(connection.id) ?? false,
-    className:
+  return rung.connections.map((connection) => {
+    const active =
       simulationState?.activeConnectionIds.includes(connection.id) ?? false
-        ? 'ladder-edge--active'
-        : undefined,
-    style:
-      simulationState?.activeConnectionIds.includes(connection.id) ?? false
-        ? { stroke: '#15803d', strokeWidth: 3 }
-        : undefined,
-    selected: selectedEdgeIds.includes(connection.id),
-    selectable: true,
-    focusable: true,
-    interactionWidth: 80,
-  }))
+
+    return {
+      id: connection.id,
+      source: connection.fromElementId,
+      target: connection.toElementId,
+      type: 'smoothstep',
+      animated: active,
+      className: active ? 'ladder-edge--active' : undefined,
+      style: active ? { stroke: '#15803d', strokeWidth: 3 } : undefined,
+      selected: selectedEdgeIds.includes(connection.id),
+      selectable: true,
+      focusable: true,
+      interactionWidth: 80,
+    }
+  })
 }
 
 export function LadderEditor({
@@ -137,13 +159,20 @@ export function LadderEditor({
   setProject,
   simulationStatus,
   simulationState,
+  showDebug,
+  t,
 }: LadderEditorProps) {
   const [selectedElementId, setSelectedElementId] = useState<string | null>(
     null,
   )
   const [selectedEdgeIds, setSelectedEdgeIds] = useState<string[]>([])
+  const flowInstancesRef = useRef(new Map<string, ReactFlowInstance>())
   const canEdit = simulationStatus !== 'RUN'
-  const selectedElement = getSelectedElement(project, selectedElementId)
+
+  const clearSelection = () => {
+    setSelectedElementId(null)
+    setSelectedEdgeIds([])
+  }
 
   const handleAddRung = () => {
     if (!canEdit) {
@@ -158,39 +187,60 @@ export function LadderEditor({
       return
     }
 
-    setSelectedElementId(null)
-    setSelectedEdgeIds([])
+    clearSelection()
     setProject((currentProject) => removeRung(currentProject, rungId))
   }
 
-  const handleAddElement = (rungId: string, type: ElementType) => {
+  const handleAddElement = (
+    rungId: string,
+    type: ElementType,
+    position?: { x: number; y: number },
+  ) => {
     if (!canEdit) {
       return
     }
 
-    setProject((currentProject) => addElement(currentProject, rungId, type))
-  }
+    const elementId = createElementId()
 
-  const handleRemoveElement = (rungId: string, elementId: string) => {
-    if (!canEdit) {
-      return
-    }
-
-    setSelectedElementId(null)
+    setSelectedElementId(elementId)
     setSelectedEdgeIds([])
     setProject((currentProject) =>
-      removeElement(currentProject, rungId, elementId, { reconnect: false }),
+      addElement(currentProject, rungId, type, {
+        id: elementId,
+        position,
+      }),
     )
   }
 
-  const handleVariableChange = (elementId: string, variableId: string) => {
-    if (!canEdit) {
-      return
-    }
+  const toggleInputElement = (elementId: string) => {
+    setProject((currentProject) => {
+      const element = currentProject.rungs
+        .flatMap((rung) => rung.elements)
+        .find((candidate) => candidate.id === elementId)
 
-    setProject((currentProject) =>
-      updateElementVariable(currentProject, elementId, variableId),
-    )
+      if (!element || !isInputContact(element, currentProject)) {
+        return currentProject
+      }
+
+      return {
+        ...currentProject,
+        variables: currentProject.variables.map((variable) =>
+          variable.id === element.variableId
+            ? { ...variable, value: !variable.value }
+            : { ...variable },
+        ),
+        rungs: currentProject.rungs.map((rung) => ({
+          ...rung,
+          elements: rung.elements.map((rungElement) => ({
+            ...rungElement,
+            position: { ...rungElement.position },
+          })),
+          connections: rung.connections.map((connection) => ({
+            ...connection,
+          })),
+        })),
+      }
+    })
   }
 
   const handleNodesChange = (changes: NodeChange[]) => {
@@ -302,8 +352,7 @@ export function LadderEditor({
       return
     }
 
-    setSelectedElementId(null)
-    setSelectedEdgeIds([])
+    clearSelection()
     setProject((currentProject) =>
       deletedNodes.reduce(
         (nextProject, node) =>
@@ -311,6 +360,49 @@ export function LadderEditor({
         currentProject,
       ),
     )
+  }
+
+  const handleDragOver = (event: DragEvent<HTMLDivElement>) => {
+    if (!canEdit) {
+      return
+    }
+
+    event.preventDefault()
+    event.dataTransfer.dropEffect = 'copy'
+  }
+
+  const handleDrop = (rungId: string, event: DragEvent<HTMLDivElement>) => {
+    if (!canEdit) {
+      return
+    }
+
+    event.preventDefault()
+
+    const elementType =
+      event.dataTransfer.getData(LADDER_ELEMENT_DRAG_TYPE) ||
+      event.dataTransfer.getData('text/plain')
+
+    if (!isElementType(elementType)) {
+      return
+    }
+
+    const flowInstance = flowInstancesRef.current.get(rungId)
+    const flowPosition = flowInstance?.screenToFlowPosition({
+      x: event.clientX,
+      y: event.clientY,
+    })
+    const bounds = event.currentTarget.getBoundingClientRect()
+    const fallbackPosition = {
+      x: event.clientX - bounds.left,
+      y: event.clientY - bounds.top,
+    }
+    const droppedPosition = flowPosition ?? fallbackPosition
+    const position = {
+      x: Math.max(0, droppedPosition.x - 64),
+      y: Math.max(0, droppedPosition.y - 22),
+    }
+
+    handleAddElement(rungId, elementType, position)
   }
 
   const projectRungs = useMemo(
@@ -321,31 +413,42 @@ export function LadderEditor({
           rung,
           project,
           selectedElementId,
+          simulationStatus,
           simulationState,
+          t,
         ),
         edges: mapRungToEdges(rung, selectedEdgeIds, simulationState),
       })),
-    [project, selectedElementId, selectedEdgeIds, simulationState],
+    [
+      project,
+      selectedElementId,
+      selectedEdgeIds,
+      simulationState,
+      simulationStatus,
+      t,
+    ],
   )
 
   return (
     <section className="editor" aria-labelledby="ladder-editor-title">
       <div className="panel__header editor__header">
         <div>
-          <h2 id="ladder-editor-title">Edytor drabinkowy</h2>
+          <h2 id="ladder-editor-title">{t('ladderEditor')}</h2>
           <p>{project.name}</p>
         </div>
         <span className="editor__status">
-          {simulationStatus === 'RUN' ? 'Symulacja RUN' : 'Tryb edycji'}
+          {simulationStatus === 'RUN' ? t('runMode') : t('editMode')}
         </span>
       </div>
 
-      <div className="ladder-canvas" aria-label="Podgląd szczebli drabinki">
-        <div className="ladder-bus ladder-bus--left" aria-hidden="true" />
-        <div className="ladder-bus ladder-bus--right" aria-hidden="true" />
-
+      <div className="ladder-canvas" aria-label={t('ladderEditor')}>
         {projectRungs.map(({ rung, nodes, edges }) => (
           <div key={rung.id} className="ladder-rung">
+            <div className="ladder-rung__rail ladder-rung__rail--left" />
+            <div className="ladder-rung__rail ladder-rung__rail--right" />
+            <div className="ladder-rung__start-line" />
+            <div className="ladder-rung__end-line" />
+
             <div className="ladder-rung__meta">
               <span className="ladder-rung__number">
                 {String(rung.number).padStart(3, '0')}
@@ -354,7 +457,7 @@ export function LadderEditor({
                 <button
                   type="button"
                   className="rung-delete-button"
-                  aria-label={`Usuń szczebel ${rung.number}`}
+                  aria-label={`${t('removeRung')} ${rung.number}`}
                   onClick={() => handleRemoveRung(rung.id)}
                 >
                   X
@@ -365,6 +468,8 @@ export function LadderEditor({
             <div
               className="rung-flow"
               data-testid={`rung-flow-${rung.number}`}
+              onDragOver={handleDragOver}
+              onDrop={(event) => handleDrop(rung.id, event)}
             >
               <ReactFlow
                 nodes={nodes}
@@ -375,25 +480,43 @@ export function LadderEditor({
                 nodesFocusable={canEdit}
                 edgesFocusable={canEdit}
                 elementsSelectable={canEdit}
-                panOnDrag
+                panOnDrag={canEdit}
                 zoomOnScroll={false}
-                zoomOnPinch
+                zoomOnPinch={canEdit}
                 preventScrolling={false}
                 deleteKeyCode={canEdit ? ['Backspace', 'Delete'] : null}
                 onNodeClick={(event, node) => {
                   event.stopPropagation()
+
+                  if (simulationStatus === 'RUN') {
+                    toggleInputElement(node.id)
+                    return
+                  }
+
                   setSelectedElementId(node.id)
+                  setSelectedEdgeIds([])
                 }}
                 onEdgeClick={(event, edge) => {
                   event.stopPropagation()
+
+                  if (!canEdit) {
+                    return
+                  }
+
                   setSelectedEdgeIds([edge.id])
                   setSelectedElementId(null)
                 }}
                 onPaneClick={() => {
-                  setSelectedElementId(null)
-                  setSelectedEdgeIds([])
+                  if (canEdit) {
+                    clearSelection()
+                  }
                 }}
                 onNodesChange={handleNodesChange}
+                onInit={(flowInstance) => {
+                  flowInstancesRef.current.set(rung.id, flowInstance)
+                }}
+                onDragOver={handleDragOver}
+                onDrop={(event) => handleDrop(rung.id, event)}
                 onNodesDelete={(deletedNodes) =>
                   handleNodesDelete(rung.id, deletedNodes)
                 }
@@ -412,85 +535,33 @@ export function LadderEditor({
               </ReactFlow>
             </div>
 
-            {selectedElement &&
-              rung.elements.some((element) => element.id === selectedElement.id) && (
-                <div className="element-editor rung-element-editor">
-                  <select
-                    aria-label={`Zmienna elementu ${selectedElement.id}`}
-                    value={selectedElement.variableId}
-                    disabled={!canEdit}
-                    onChange={(event) =>
-                      handleVariableChange(
-                        selectedElement.id,
-                        event.target.value,
-                      )
-                    }
-                  >
-                    {project.variables.length === 0 ? (
-                      <option value="">Brak zmiennych</option>
-                    ) : (
-                      project.variables.map((variable) => (
-                        <option key={variable.id} value={variable.id}>
-                          {variable.name}
-                        </option>
-                      ))
-                    )}
-                  </select>
-
-                  {canEdit && (
-                    <button
-                      type="button"
-                      className="element-delete-button"
-                      onClick={() =>
-                        handleRemoveElement(rung.id, selectedElement.id)
-                      }
-                    >
-                      Usuń
-                    </button>
-                  )}
-                </div>
-              )}
-
-            {canEdit && (
-              <div className="rung-actions">
-                {elementActions.map((action) => (
-                  <button
-                    key={action.type}
-                    type="button"
-                    className="rung-action-button"
-                    onClick={() => handleAddElement(rung.id, action.type)}
-                  >
-                    {action.label}
-                  </button>
-                ))}
+            {showDebug && (
+              <div
+                className="rung-debug"
+                aria-label={`${t('debugConnections')} ${rung.number}`}
+              >
+                <strong>{t('debugConnections')}</strong>
+                {rung.connections.length === 0 ? (
+                  <span>{t('none')}</span>
+                ) : (
+                  rung.connections.map((connection) => (
+                    <span key={connection.id}>
+                      {getElementDebugName(
+                        connection.fromElementId,
+                        rung.elements,
+                        project,
+                      )}
+                      {' -> '}
+                      {getElementDebugName(
+                        connection.toElementId,
+                        rung.elements,
+                        project,
+                      )}
+                    </span>
+                  ))
+                )}
               </div>
             )}
-
-            <div
-              className="rung-debug"
-              aria-label={`Połączenia szczebla ${rung.number}`}
-            >
-              <strong>connections:</strong>
-              {rung.connections.length === 0 ? (
-                <span>brak</span>
-              ) : (
-                rung.connections.map((connection) => (
-                  <span key={connection.id}>
-                    {getElementDebugName(
-                      connection.fromElementId,
-                      rung.elements,
-                      project,
-                    )}
-                    {' -> '}
-                    {getElementDebugName(
-                      connection.toElementId,
-                      rung.elements,
-                      project,
-                    )}
-                  </span>
-                ))
-              )}
-            </div>
           </div>
         ))}
 
@@ -501,11 +572,21 @@ export function LadderEditor({
               className="add-rung-button"
               onClick={handleAddRung}
             >
-              + Dodaj szczebel
+              {t('addRung')}
             </button>
           </div>
         )}
       </div>
+
+      <PropertiesPanel
+        project={project}
+        setProject={setProject}
+        simulationStatus={simulationStatus}
+        selectedElementId={selectedElementId}
+        selectedEdgeId={selectedEdgeIds[0] ?? null}
+        onClearSelection={clearSelection}
+        t={t}
+      />
     </section>
   )
 }

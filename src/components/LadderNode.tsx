@@ -5,6 +5,8 @@ export type LadderNodeData = {
   elementType: ElementType
   variableName: string
   isActive: boolean
+  isInputToggleable: boolean
+  inputToggleTitle?: string
   timerPresetMs?: number
   timerElapsedMs?: number
   timerDone?: boolean
@@ -36,6 +38,7 @@ export function LadderNode({
     'ladder-flow-node',
     selected ? 'ladder-flow-node--selected' : '',
     data.isActive ? 'ladder-flow-node--active' : '',
+    data.isInputToggleable ? 'ladder-flow-node--input-toggleable' : '',
   ]
     .filter(Boolean)
     .join(' ')
@@ -44,6 +47,7 @@ export function LadderNode({
     <div
       className={className}
       data-testid={`ladder-node-${id}`}
+      title={data.inputToggleTitle}
     >
       <Handle
         type="target"

@@ -8,6 +8,7 @@ import type {
 
 const ELEMENT_SPACING = 150
 const FIRST_ELEMENT_X = 120
+const FIRST_TIMER_INDEX = 1
 
 function createId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
@@ -55,6 +56,10 @@ function getDefaultVariableId(project: Project, elementType: ElementType) {
   )
 }
 
+function elementUsesTimer(elementType: ElementType) {
+  return elementType === 'TON'
+}
+
 function cloneVariable(variable: Variable): Variable {
   return { ...variable }
 }
@@ -92,6 +97,78 @@ function getUniqueMarkerAddress(project: Project) {
   }
 
   return `%M0.${bitIndex}`
+}
+
+function getUniqueTimerName(project: Project) {
+  const names = new Set(project.variables.map((variable) => variable.name))
+  let index = FIRST_TIMER_INDEX
+
+  while (names.has(`Timer${index}`)) {
+    index += 1
+  }
+
+  return `Timer${index}`
+}
+
+function getUniqueTimerAddress(project: Project) {
+  const addresses = new Set(
+    project.variables.map((variable) => variable.address),
+  )
+  let index = FIRST_TIMER_INDEX
+
+  while (addresses.has(`%T${index}`)) {
+    index += 1
+  }
+
+  return `%T${index}`
+}
+
+function buildBoolVariable(project: Project): Variable {
+  return {
+    id: createId('variable'),
+    name: getUniqueVariableName(project),
+    address: getUniqueMarkerAddress(project),
+    type: 'BOOL',
+    value: false,
+  }
+}
+
+function buildTimerVariable(project: Project): Variable {
+  return {
+    id: createId('variable'),
+    name: getUniqueTimerName(project),
+    address: getUniqueTimerAddress(project),
+    type: 'TIMER',
+    value: false,
+    presetMs: 1000,
+    elapsedMs: 0,
+    done: false,
+  }
+}
+
+function ensureVariableForElement(
+  project: Project,
+  elementType: ElementType,
+): { project: Project; variableId: string } {
+  const expectedType = elementUsesTimer(elementType) ? 'TIMER' : 'BOOL'
+  const existingVariable = project.variables.find(
+    (variable) => variable.type === expectedType,
+  )
+
+  if (existingVariable) {
+    return { project, variableId: existingVariable.id }
+  }
+
+  const nextProject =
+    expectedType === 'TIMER'
+      ? createTimerVariable(project)
+      : createBoolVariable(project)
+  const createdVariable = nextProject.variables[nextProject.variables.length - 1]
+
+  return {
+    project: nextProject,
+    variableId: createdVariable?.id ?? '',
+  }
 }
 
 export function wouldCreateCycle(
@@ -167,17 +244,26 @@ export function removeRung(project: Project, rungId: string): Project {
 }
 
 export function addVariable(project: Project): Project {
+  return createBoolVariable(project)
+}
+
+export function createBoolVariable(project: Project): Project {
   return {
     ...project,
     variables: [
       ...project.variables.map(cloneVariable),
-      {
-        id: createId('variable'),
-        name: getUniqueVariableName(project),
-        address: getUniqueMarkerAddress(project),
-        type: 'BOOL',
-        value: false,
-      },
+      buildBoolVariable(project),
+    ],
+    rungs: project.rungs.map(cloneRung),
+  }
+}
+
+export function createTimerVariable(project: Project): Project {
+  return {
+    ...project,
+    variables: [
+      ...project.variables.map(cloneVariable),
+      buildTimerVariable(project),
     ],
     rungs: project.rungs.map(cloneRung),
   }
@@ -254,12 +340,18 @@ export function addElement(
   project: Project,
   rungId: string,
   type: ElementType,
+  options: {
+    id?: string
+    position?: { x: number; y: number }
+  } = {},
 ): Project {
-  const defaultVariableId = getDefaultVariableId(project, type)
+  const ensured = ensureVariableForElement(project, type)
+  const defaultVariableId =
+    ensured.variableId || getDefaultVariableId(ensured.project, type)
 
   return {
-    ...project,
-    rungs: project.rungs.map((rung) => {
+    ...ensured.project,
+    rungs: ensured.project.rungs.map((rung) => {
       if (rung.id !== rungId) {
         return cloneRung(rung)
       }
@@ -267,10 +359,10 @@ export function addElement(
       const clonedRung = cloneRung(rung)
       const lastElement = getLastElement(clonedRung)
       const newElement: LadderElement = {
-        id: createId('element'),
+        id: options.id ?? createId('element'),
         type,
         variableId: defaultVariableId,
-        position: {
+        position: options.position ?? {
           x: getNextElementX(rung),
           y: 0,
         },

@@ -11,13 +11,20 @@ import { LadderEditor } from './components/LadderEditor'
 import { SimulationPanel } from './components/SimulationPanel'
 import { TopBar } from './components/TopBar'
 import { demoProject } from './data/demoProject'
+import type { Language } from './i18n/translations'
+import { useTranslation } from './i18n/useTranslation'
 import { simulateProjectWithState } from './simulator/simulate'
 import type { SimulationState } from './simulator/simulationState'
 import type { Project } from './types/project'
 import './App.css'
 
 type SimulationStatus = 'RUN' | 'STOP'
+type Theme = 'light' | 'dark'
+
 const SCAN_INTERVAL_MS = 200
+const THEME_STORAGE_KEY = 'plc-ladder-theme'
+const LANGUAGE_STORAGE_KEY = 'plc-ladder-language'
+const DEBUG_STORAGE_KEY = 'plc-ladder-show-debug'
 
 function App() {
   const [project, setProject] = useState<Project>(demoProject)
@@ -26,7 +33,17 @@ function App() {
   const [simulationState, setSimulationState] =
     useState<SimulationState | null>(null)
   const [scanCount, setScanCount] = useState(0)
+  const [theme, setTheme] = useState<Theme>(() =>
+    localStorage.getItem(THEME_STORAGE_KEY) === 'dark' ? 'dark' : 'light',
+  )
+  const [language, setLanguage] = useState<Language>(() =>
+    localStorage.getItem(LANGUAGE_STORAGE_KEY) === 'en' ? 'en' : 'pl',
+  )
+  const [showDebug, setShowDebug] = useState(
+    () => localStorage.getItem(DEBUG_STORAGE_KEY) === 'true',
+  )
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const { t } = useTranslation(language)
 
   const executeScan = useCallback(() => {
     setProject((currentProject) => {
@@ -53,17 +70,31 @@ function App() {
     }
   }, [executeScan, simulationStatus])
 
-  const handleNewProject = () => {
-    setProject(structuredClone(demoProject))
+  useEffect(() => {
+    localStorage.setItem(THEME_STORAGE_KEY, theme)
+  }, [theme])
+
+  useEffect(() => {
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, language)
+  }, [language])
+
+  useEffect(() => {
+    localStorage.setItem(DEBUG_STORAGE_KEY, String(showDebug))
+  }, [showDebug])
+
+  const resetRuntimeState = () => {
     setSimulationStatus('STOP')
     setSimulationState(null)
     setScanCount(0)
   }
 
+  const handleNewProject = () => {
+    setProject(structuredClone(demoProject))
+    resetRuntimeState()
+  }
+
   const handleOpenProject = () => {
-    setSimulationStatus('STOP')
-    setSimulationState(null)
-    setScanCount(0)
+    resetRuntimeState()
     fileInputRef.current?.click()
   }
 
@@ -79,12 +110,11 @@ function App() {
     try {
       const fileContent = await file.text()
       const loadedProject = JSON.parse(fileContent) as Project
+
       setProject(loadedProject)
-      setSimulationStatus('STOP')
-      setSimulationState(null)
-      setScanCount(0)
+      resetRuntimeState()
     } catch {
-      window.alert('Nie udało się wczytać projektu PLC Ladder.')
+      window.alert('Nie udalo sie wczytac projektu PLC Ladder.')
     } finally {
       event.target.value = ''
     }
@@ -111,14 +141,19 @@ function App() {
   }
 
   const handleStopSimulation = () => {
-    setSimulationStatus('STOP')
-    setSimulationState(null)
-    setScanCount(0)
+    resetRuntimeState()
   }
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell app-shell--${theme}`}>
       <TopBar
+        t={t}
+        language={language}
+        theme={theme}
+        showDebug={showDebug}
+        onLanguageChange={setLanguage}
+        onThemeChange={setTheme}
+        onShowDebugChange={setShowDebug}
         onNewProject={handleNewProject}
         onOpenProject={handleOpenProject}
         onSaveProject={handleSaveProject}
@@ -126,13 +161,15 @@ function App() {
         onStopSimulation={handleStopSimulation}
       />
 
-      <main className="workspace" aria-label="Obszar roboczy edytora PLC">
-        <BlockLibrary />
+      <main className="workspace" aria-label="PLC Ladder workspace">
+        <BlockLibrary t={t} />
         <LadderEditor
           project={project}
           setProject={setProject}
           simulationStatus={simulationStatus}
           simulationState={simulationState}
+          showDebug={showDebug}
+          t={t}
         />
         <SimulationPanel
           project={project}
@@ -140,6 +177,7 @@ function App() {
           simulationStatus={simulationStatus}
           scanCount={scanCount}
           scanIntervalMs={SCAN_INTERVAL_MS}
+          t={t}
         />
       </main>
 
@@ -147,6 +185,7 @@ function App() {
         project={project}
         setProject={setProject}
         simulationStatus={simulationStatus}
+        t={t}
       />
 
       <input

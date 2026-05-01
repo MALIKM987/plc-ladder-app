@@ -1,4 +1,5 @@
 import type { Dispatch, SetStateAction } from 'react'
+import type { TranslationKey } from '../i18n/translations'
 import {
   addVariable,
   removeVariable,
@@ -10,6 +11,7 @@ type VariableTableProps = {
   project: Project
   setProject: Dispatch<SetStateAction<Project>>
   simulationStatus: 'RUN' | 'STOP'
+  t: (key: TranslationKey) => string
 }
 
 const VARIABLE_TYPES: Variable['type'][] = ['BOOL', 'TIMER']
@@ -31,6 +33,7 @@ export function VariableTable({
   project,
   setProject,
   simulationStatus,
+  t,
 }: VariableTableProps) {
   const readOnly = simulationStatus === 'RUN'
 
@@ -48,7 +51,7 @@ export function VariableTable({
     }
 
     if (isVariableUsed(project, variableId)) {
-      window.alert('Nie można usunąć zmiennej używanej w drabince.')
+      window.alert(t('cannotDeleteUsedVariable'))
       return
     }
 
@@ -77,14 +80,14 @@ export function VariableTable({
   return (
     <section className="variables" aria-labelledby="variables-title">
       <div className="panel__header variables__header">
-        <h2 id="variables-title">Tabela zmiennych</h2>
+        <h2 id="variables-title">{t('variableTable')}</h2>
         <button
           type="button"
           className="variable-add-button"
           disabled={readOnly}
           onClick={handleAddVariable}
         >
-          + Dodaj zmienną
+          {t('addVariable')}
         </button>
       </div>
 
@@ -92,11 +95,11 @@ export function VariableTable({
         <table>
           <thead>
             <tr>
-              <th>Nazwa</th>
-              <th>Typ</th>
-              <th>Adres</th>
-              <th>Wartość</th>
-              <th>Akcje</th>
+              <th>{t('name')}</th>
+              <th>{t('type')}</th>
+              <th>{t('address')}</th>
+              <th>{t('value')}</th>
+              <th>{t('actions')}</th>
             </tr>
           </thead>
           <tbody>
@@ -108,7 +111,7 @@ export function VariableTable({
                   <td>
                     <input
                       className="variable-field"
-                      aria-label={`Nazwa zmiennej ${variable.name}`}
+                      aria-label={`${t('name')} ${variable.name}`}
                       value={variable.name}
                       disabled={readOnly}
                       onChange={(event) =>
@@ -121,7 +124,7 @@ export function VariableTable({
                   <td>
                     <select
                       className="variable-field"
-                      aria-label={`Typ zmiennej ${variable.name}`}
+                      aria-label={`${t('type')} ${variable.name}`}
                       value={variable.type}
                       disabled={readOnly}
                       onChange={(event) =>
@@ -140,7 +143,7 @@ export function VariableTable({
                   <td>
                     <input
                       className="variable-field"
-                      aria-label={`Adres zmiennej ${variable.name}`}
+                      aria-label={`${t('address')} ${variable.name}`}
                       value={variable.address}
                       disabled={readOnly}
                       onChange={(event) =>
@@ -203,7 +206,7 @@ export function VariableTable({
                       disabled={readOnly}
                       onClick={() => handleRemoveVariable(variable.id)}
                     >
-                      Usuń
+                      {t('delete')}
                     </button>
                   </td>
                 </tr>

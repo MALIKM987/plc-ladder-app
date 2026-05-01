@@ -1,4 +1,5 @@
 import type { Dispatch, SetStateAction } from 'react'
+import type { TranslationKey } from '../i18n/translations'
 import type { Project, Variable } from '../types/project'
 
 type SimulationPanelProps = {
@@ -7,6 +8,7 @@ type SimulationPanelProps = {
   simulationStatus: 'RUN' | 'STOP'
   scanCount: number
   scanIntervalMs: number
+  t: (key: TranslationKey) => string
 }
 
 function isInputVariable(variable: Variable) {
@@ -23,6 +25,7 @@ export function SimulationPanel({
   simulationStatus,
   scanCount,
   scanIntervalMs,
+  t,
 }: SimulationPanelProps) {
   const toggleInputValue = (variableId: string) => {
     setProject((currentProject) => ({
@@ -38,12 +41,12 @@ export function SimulationPanel({
   return (
     <aside className="panel panel--right" aria-labelledby="simulation-panel-title">
       <div className="panel__header">
-        <h2 id="simulation-panel-title">Panel symulacji</h2>
+        <h2 id="simulation-panel-title">{t('panelSimulation')}</h2>
       </div>
 
       <div className="simulation-summary">
         <div className="simulation-summary__item">
-          <span>Status</span>
+          <span>{t('status')}</span>
           <strong
             className={
               simulationStatus === 'RUN'
@@ -55,11 +58,11 @@ export function SimulationPanel({
           </strong>
         </div>
         <div className="simulation-summary__item">
-          <span>Scan interval</span>
+          <span>{t('scanInterval')}</span>
           <strong>{scanIntervalMs} ms</strong>
         </div>
         <div className="simulation-summary__item">
-          <span>Scan</span>
+          <span>{t('scan')}</span>
           <strong>{scanCount}</strong>
         </div>
       </div>
