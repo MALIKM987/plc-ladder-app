@@ -47,6 +47,16 @@ export const demoProject: Project = {
       type: 'BOOL',
       value: false,
     },
+    {
+      id: 'var-timer-1',
+      name: 'Timer1',
+      address: '%T0',
+      type: 'TIMER',
+      value: false,
+      presetMs: 1000,
+      elapsedMs: 0,
+      done: false,
+    },
   ],
   rungs: [
     {

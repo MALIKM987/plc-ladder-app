@@ -30,7 +30,10 @@ function App() {
 
   const executeScan = useCallback(() => {
     setProject((currentProject) => {
-      const result = simulateProjectWithState(currentProject)
+      const result = simulateProjectWithState(
+        currentProject,
+        SCAN_INTERVAL_MS,
+      )
 
       setSimulationState(result.state)
       return result.project

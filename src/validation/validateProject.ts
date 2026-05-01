@@ -108,7 +108,11 @@ function validateRungConnections(rung: Rung): ValidationIssue[] {
       })
     }
 
-    if (element.type !== 'COIL' && hasCoil && outgoingCount === 0) {
+    if (
+      (element.type === 'NO_CONTACT' || element.type === 'NC_CONTACT') &&
+      hasCoil &&
+      outgoingCount === 0
+    ) {
       issues.push({
         id: `contact-${element.id}-not-connected-to-coil`,
         severity: 'warning',
@@ -172,13 +176,16 @@ export function validateProject(project: Project): ValidationIssue[] {
     const coilCount = rung.elements.filter(
       (element) => element.type === 'COIL',
     ).length
-    const hasCoil = coilCount > 0
+    const outputCount = rung.elements.filter(
+      (element) => element.type === 'COIL' || element.type === 'TON',
+    ).length
+    const hasOutputElement = outputCount > 0
 
-    if (!hasCoil) {
+    if (!hasOutputElement) {
       issues.push({
-        id: `rung-${rung.id}-missing-coil`,
+        id: `rung-${rung.id}-missing-output`,
         severity: 'warning',
-        message: `Szczebel ${rung.number} nie zawiera cewki.`,
+        message: `Szczebel ${rung.number} nie zawiera cewki ani bloku wyj\u015bciowego.`,
       })
     }
 
@@ -208,6 +215,34 @@ export function validateProject(project: Project): ValidationIssue[] {
           id: `coil-${element.id}-missing-variable`,
           severity: 'error',
           message: `Cewka ${element.id} nie ma przypisanej zmiennej.`,
+        })
+      }
+
+      if (
+        variable &&
+        (element.type === 'NO_CONTACT' || element.type === 'NC_CONTACT') &&
+        variable.type !== 'BOOL'
+      ) {
+        issues.push({
+          id: `contact-${element.id}-invalid-variable-type`,
+          severity: 'error',
+          message: `Styk w szczeblu ${rung.number} musi u\u017cywa\u0107 zmiennej BOOL.`,
+        })
+      }
+
+      if (variable && element.type === 'COIL' && variable.type !== 'BOOL') {
+        issues.push({
+          id: `coil-${element.id}-invalid-variable-type`,
+          severity: 'error',
+          message: `Cewka w szczeblu ${rung.number} musi u\u017cywa\u0107 zmiennej BOOL.`,
+        })
+      }
+
+      if (variable && element.type === 'TON' && variable.type !== 'TIMER') {
+        issues.push({
+          id: `ton-${element.id}-invalid-variable-type`,
+          severity: 'error',
+          message: `TON w szczeblu ${rung.number} musi u\u017cywa\u0107 zmiennej TIMER.`,
         })
       }
     }

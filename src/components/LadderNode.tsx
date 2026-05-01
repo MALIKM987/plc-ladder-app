@@ -5,6 +5,9 @@ export type LadderNodeData = {
   elementType: ElementType
   variableName: string
   isActive: boolean
+  timerPresetMs?: number
+  timerElapsedMs?: number
+  timerDone?: boolean
 }
 
 function getNodeLabel(type: ElementType, variableName: string) {
@@ -14,6 +17,10 @@ function getNodeLabel(type: ElementType, variableName: string) {
 
   if (type === 'COIL') {
     return `( ) ${variableName}`
+  }
+
+  if (type === 'TON') {
+    return `TON ${variableName}`
   }
 
   return `| | ${variableName}`
@@ -43,7 +50,16 @@ export function LadderNode({
         position={Position.Left}
         isConnectable={isConnectable}
       />
-      <span>{getNodeLabel(data.elementType, data.variableName)}</span>
+      <span className="ladder-flow-node__label">
+        {getNodeLabel(data.elementType, data.variableName)}
+      </span>
+      {data.elementType === 'TON' && (
+        <span className="ladder-flow-node__details">
+          <span>PT: {data.timerPresetMs ?? 0}ms</span>
+          <span>ET: {data.timerElapsedMs ?? 0}ms</span>
+          <span>Q: {data.timerDone ? 'TRUE' : 'FALSE'}</span>
+        </span>
+      )}
       <Handle
         type="source"
         position={Position.Right}

@@ -1,11 +1,15 @@
-export type ElementType = 'NO_CONTACT' | 'NC_CONTACT' | 'COIL'
+export type ElementType = 'NO_CONTACT' | 'NC_CONTACT' | 'COIL' | 'TON'
+export type VariableType = 'BOOL' | 'TIMER'
 
 export interface Variable {
   id: string
   name: string
   address: string
-  type: 'BOOL'
+  type: VariableType
   value: boolean
+  presetMs?: number
+  elapsedMs?: number
+  done?: boolean
 }
 
 export interface LadderElement {

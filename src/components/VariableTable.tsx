@@ -12,10 +12,13 @@ type VariableTableProps = {
   simulationStatus: 'RUN' | 'STOP'
 }
 
-const VARIABLE_TYPES: Variable['type'][] = ['BOOL']
+const VARIABLE_TYPES: Variable['type'][] = ['BOOL', 'TIMER']
 
 function canEditValue(variable: Variable) {
-  return variable.address.startsWith('%I') || variable.address.startsWith('%M')
+  return (
+    variable.type === 'BOOL' &&
+    (variable.address.startsWith('%I') || variable.address.startsWith('%M'))
+  )
 }
 
 function isVariableUsed(project: Project, variableId: string) {
@@ -63,6 +66,12 @@ export function VariableTable({
     setProject((currentProject) =>
       updateVariable(currentProject, variableId, patch),
     )
+  }
+
+  const handlePresetChange = (variableId: string, presetValue: string) => {
+    const presetMs = Math.max(0, Number(presetValue) || 0)
+
+    handleVariableChange(variableId, { presetMs })
   }
 
   return (
@@ -142,18 +151,50 @@ export function VariableTable({
                     />
                   </td>
                   <td>
-                    <button
-                      type="button"
-                      className="variable-value-button"
-                      disabled={!valueEditable}
-                      onClick={() =>
-                        handleVariableChange(variable.id, {
-                          value: !variable.value,
-                        })
-                      }
-                    >
-                      {variable.value ? 'TRUE' : 'FALSE'}
-                    </button>
+                    {variable.type === 'TIMER' ? (
+                      <div className="timer-variable-fields">
+                        <label>
+                          PT
+                          <input
+                            className="variable-field variable-field--number"
+                            type="number"
+                            min="0"
+                            value={variable.presetMs ?? 1000}
+                            disabled={readOnly}
+                            onChange={(event) =>
+                              handlePresetChange(
+                                variable.id,
+                                event.target.value,
+                              )
+                            }
+                          />
+                        </label>
+                        <span>
+                          ET <code>{variable.elapsedMs ?? 0} ms</code>
+                        </span>
+                        <span>
+                          Q{' '}
+                          <code>
+                            {variable.done || variable.value
+                              ? 'TRUE'
+                              : 'FALSE'}
+                          </code>
+                        </span>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        className="variable-value-button"
+                        disabled={!valueEditable}
+                        onClick={() =>
+                          handleVariableChange(variable.id, {
+                            value: !variable.value,
+                          })
+                        }
+                      >
+                        {variable.value ? 'TRUE' : 'FALSE'}
+                      </button>
+                    )}
                   </td>
                   <td>
                     <button

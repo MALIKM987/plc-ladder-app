@@ -34,6 +34,7 @@ const elementActions: Array<{ label: string; type: ElementType }> = [
   { label: '+ Styk NO', type: 'NO_CONTACT' },
   { label: '+ Styk NC', type: 'NC_CONTACT' },
   { label: '+ Cewka', type: 'COIL' },
+  { label: '+ Timer TON', type: 'TON' },
 ]
 
 const nodeTypes = {
@@ -45,6 +46,10 @@ function getVariableName(variableId: string, project: Project) {
     project.variables.find((candidate) => candidate.id === variableId)?.name ??
     'Brak zmiennej'
   )
+}
+
+function getVariable(variableId: string, project: Project) {
+  return project.variables.find((candidate) => candidate.id === variableId)
 }
 
 function getElementDebugName(
@@ -79,18 +84,25 @@ function mapRungToNodes(
   selectedElementId: string | null,
   simulationState: SimulationState | null,
 ): Node<LadderNodeData>[] {
-  return rung.elements.map((element) => ({
-    id: element.id,
-    type: 'ladderNode',
-    position: element.position,
-    selected: selectedElementId === element.id,
-    data: {
-      elementType: element.type,
-      variableName: getVariableName(element.variableId, project),
-      isActive:
-        simulationState?.activeElementIds.includes(element.id) ?? false,
-    },
-  }))
+  return rung.elements.map((element) => {
+    const variable = getVariable(element.variableId, project)
+
+    return {
+      id: element.id,
+      type: 'ladderNode',
+      position: element.position,
+      selected: selectedElementId === element.id,
+      data: {
+        elementType: element.type,
+        variableName: variable?.name ?? 'Brak zmiennej',
+        isActive:
+          simulationState?.activeElementIds.includes(element.id) ?? false,
+        timerPresetMs: variable?.presetMs,
+        timerElapsedMs: variable?.elapsedMs,
+        timerDone: variable?.done,
+      },
+    }
+  })
 }
 
 function mapRungToEdges(

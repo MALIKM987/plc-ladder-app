@@ -45,6 +45,16 @@ function getLastElement(rung: Rung) {
   )[rung.elements.length - 1]
 }
 
+function getDefaultVariableId(project: Project, elementType: ElementType) {
+  const preferredType = elementType === 'TON' ? 'TIMER' : 'BOOL'
+
+  return (
+    project.variables.find((variable) => variable.type === preferredType)?.id ??
+    project.variables[0]?.id ??
+    ''
+  )
+}
+
 function cloneVariable(variable: Variable): Variable {
   return { ...variable }
 }
@@ -196,10 +206,47 @@ export function updateVariable(
     ...project,
     variables: project.variables.map((variable) =>
       variable.id === variableId
-        ? { ...variable, ...patch }
+        ? normalizeVariablePatch(variable, patch)
         : cloneVariable(variable),
     ),
     rungs: project.rungs.map(cloneRung),
+  }
+}
+
+function normalizeVariablePatch(
+  variable: Variable,
+  patch: Partial<Omit<Variable, 'id'>>,
+): Variable {
+  if (patch.type === 'TIMER') {
+    return {
+      ...variable,
+      ...patch,
+      type: 'TIMER',
+      value: false,
+      presetMs: patch.presetMs ?? variable.presetMs ?? 1000,
+      elapsedMs: 0,
+      done: false,
+    }
+  }
+
+  if (patch.type === 'BOOL') {
+    const nextVariable: Variable = {
+      ...variable,
+      ...patch,
+      type: 'BOOL',
+      value: patch.value ?? false,
+    }
+
+    delete nextVariable.presetMs
+    delete nextVariable.elapsedMs
+    delete nextVariable.done
+
+    return nextVariable
+  }
+
+  return {
+    ...variable,
+    ...patch,
   }
 }
 
@@ -208,7 +255,7 @@ export function addElement(
   rungId: string,
   type: ElementType,
 ): Project {
-  const defaultVariableId = project.variables[0]?.id ?? ''
+  const defaultVariableId = getDefaultVariableId(project, type)
 
   return {
     ...project,
