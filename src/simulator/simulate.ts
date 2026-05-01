@@ -1,4 +1,5 @@
 import type { LadderElement, Project, Variable } from '../types/project'
+import { getExecutionOrder } from './graph'
 
 function cloneProject(project: Project): Project {
   return {
@@ -29,12 +30,10 @@ export function simulateProject(project: Project): Project {
   )
 
   for (const rung of nextProject.rungs) {
-    const elements = [...rung.elements].sort(
-      (first, second) => first.position.x - second.position.x,
-    )
+    const orderedElements = getExecutionOrder(rung)
     let signal = true
 
-    for (const element of elements) {
+    for (const element of orderedElements) {
       const variable = getVariable(variablesById, element)
 
       if (element.type === 'NO_CONTACT') {

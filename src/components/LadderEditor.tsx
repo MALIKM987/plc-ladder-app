@@ -41,6 +41,25 @@ function getElementLabel(element: LadderElement, project: Project) {
   return `| | ${variableName}`
 }
 
+function getElementDebugName(
+  elementId: string,
+  elements: LadderElement[],
+  project: Project,
+) {
+  const sortedElements = [...elements].sort(
+    (first, second) => first.position.x - second.position.x,
+  )
+  const element = sortedElements.find((candidate) => candidate.id === elementId)
+  const elementIndex = sortedElements.findIndex(
+    (candidate) => candidate.id === elementId,
+  )
+  const variable = project.variables.find(
+    (candidate) => candidate.id === element?.variableId,
+  )
+
+  return `${elementIndex + 1}:${variable?.name ?? elementId}`
+}
+
 export function LadderEditor({
   project,
   setProject,
@@ -213,6 +232,29 @@ export function LadderEditor({
                   ))}
                 </div>
               )}
+
+              <div className="rung-debug" aria-label={`Połączenia szczebla ${rung.number}`}>
+                <strong>connections:</strong>
+                {rung.connections.length === 0 ? (
+                  <span>brak</span>
+                ) : (
+                  rung.connections.map((connection) => (
+                    <span key={connection.id}>
+                      {getElementDebugName(
+                        connection.fromElementId,
+                        rung.elements,
+                        project,
+                      )}
+                      {' -> '}
+                      {getElementDebugName(
+                        connection.toElementId,
+                        rung.elements,
+                        project,
+                      )}
+                    </span>
+                  ))
+                )}
+              </div>
             </div>
           )
         })}

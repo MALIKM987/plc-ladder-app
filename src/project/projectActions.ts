@@ -1,4 +1,4 @@
-import type { ElementType, Project, Rung } from '../types/project'
+import type { ElementType, LadderElement, Project, Rung } from '../types/project'
 
 const ELEMENT_SPACING = 150
 const FIRST_ELEMENT_X = 120
@@ -7,13 +7,17 @@ function createId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 }
 
+function cloneElement(element: LadderElement): LadderElement {
+  return {
+    ...element,
+    position: { ...element.position },
+  }
+}
+
 function cloneRung(rung: Rung): Rung {
   return {
     ...rung,
-    elements: rung.elements.map((element) => ({
-      ...element,
-      position: { ...element.position },
-    })),
+    elements: rung.elements.map(cloneElement),
     connections: rung.connections.map((connection) => ({ ...connection })),
   }
 }
@@ -27,6 +31,12 @@ function getNextElementX(rung: Rung) {
     Math.max(...rung.elements.map((element) => element.position.x)) +
     ELEMENT_SPACING
   )
+}
+
+function getLastElement(rung: Rung) {
+  return [...rung.elements].sort(
+    (first, second) => first.position.x - second.position.x,
+  )[rung.elements.length - 1]
 }
 
 export function addRung(project: Project): Project {
@@ -73,23 +83,31 @@ export function addElement(
         return cloneRung(rung)
       }
 
+      const clonedRung = cloneRung(rung)
+      const lastElement = getLastElement(clonedRung)
+      const newElement: LadderElement = {
+        id: createId('element'),
+        type,
+        variableId: defaultVariableId,
+        position: {
+          x: getNextElementX(rung),
+          y: 0,
+        },
+      }
+
       return {
-        ...cloneRung(rung),
-        elements: [
-          ...rung.elements.map((element) => ({
-            ...element,
-            position: { ...element.position },
-          })),
-          {
-            id: createId('element'),
-            type,
-            variableId: defaultVariableId,
-            position: {
-              x: getNextElementX(rung),
-              y: 0,
-            },
-          },
-        ],
+        ...clonedRung,
+        elements: [...clonedRung.elements, newElement],
+        connections: lastElement
+          ? [
+              ...clonedRung.connections,
+              {
+                id: createId('connection'),
+                fromElementId: lastElement.id,
+                toElementId: newElement.id,
+              },
+            ]
+          : clonedRung.connections,
       }
     }),
   }
@@ -107,21 +125,38 @@ export function removeElement(
         return cloneRung(rung)
       }
 
+      const incomingConnection = rung.connections.find(
+        (connection) => connection.toElementId === elementId,
+      )
+      const outgoingConnection = rung.connections.find(
+        (connection) => connection.fromElementId === elementId,
+      )
+      const nextConnections = rung.connections
+        .filter(
+          (connection) =>
+            connection.fromElementId !== elementId &&
+            connection.toElementId !== elementId,
+        )
+        .map((connection) => ({ ...connection }))
+
+      if (
+        incomingConnection &&
+        outgoingConnection &&
+        incomingConnection.fromElementId !== outgoingConnection.toElementId
+      ) {
+        nextConnections.push({
+          id: createId('connection'),
+          fromElementId: incomingConnection.fromElementId,
+          toElementId: outgoingConnection.toElementId,
+        })
+      }
+
       return {
         ...rung,
         elements: rung.elements
           .filter((element) => element.id !== elementId)
-          .map((element) => ({
-            ...element,
-            position: { ...element.position },
-          })),
-        connections: rung.connections
-          .filter(
-            (connection) =>
-              connection.fromElementId !== elementId &&
-              connection.toElementId !== elementId,
-          )
-          .map((connection) => ({ ...connection })),
+          .map(cloneElement),
+        connections: nextConnections,
       }
     }),
   }
@@ -143,10 +178,7 @@ export function updateElementVariable(
               variableId,
               position: { ...element.position },
             }
-          : {
-              ...element,
-              position: { ...element.position },
-            },
+          : cloneElement(element),
       ),
       connections: rung.connections.map((connection) => ({ ...connection })),
     })),
