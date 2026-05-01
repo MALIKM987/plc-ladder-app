@@ -140,7 +140,11 @@ function App() {
         />
       </main>
 
-      <BottomPanel project={project} />
+      <BottomPanel
+        project={project}
+        setProject={setProject}
+        simulationStatus={simulationStatus}
+      />
 
       <input
         ref={fileInputRef}

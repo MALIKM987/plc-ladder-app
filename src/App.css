@@ -572,6 +572,59 @@ th {
   text-transform: uppercase;
 }
 
+.variables__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.variable-field,
+.variable-add-button,
+.variable-delete-button,
+.variable-value-button {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--control-bg);
+  color: var(--text);
+  font: inherit;
+}
+
+.variable-field {
+  width: 100%;
+  min-width: 96px;
+  padding: 7px 8px;
+}
+
+.variable-add-button,
+.variable-delete-button,
+.variable-value-button {
+  cursor: pointer;
+  padding: 7px 10px;
+  white-space: nowrap;
+}
+
+.variable-value-button {
+  min-width: 68px;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.variable-field:disabled,
+.variable-add-button:disabled,
+.variable-delete-button:disabled,
+.variable-value-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.variable-add-button:hover:not(:disabled),
+.variable-delete-button:hover:not(:disabled),
+.variable-value-button:hover:not(:disabled),
+.variable-field:focus {
+  border-color: var(--accent);
+}
+
 .messages ul {
   display: grid;
   gap: 8px;

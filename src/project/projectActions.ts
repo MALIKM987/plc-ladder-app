@@ -1,4 +1,10 @@
-import type { ElementType, LadderElement, Project, Rung } from '../types/project'
+import type {
+  ElementType,
+  LadderElement,
+  Project,
+  Rung,
+  Variable,
+} from '../types/project'
 
 const ELEMENT_SPACING = 150
 const FIRST_ELEMENT_X = 120
@@ -37,6 +43,45 @@ function getLastElement(rung: Rung) {
   return [...rung.elements].sort(
     (first, second) => first.position.x - second.position.x,
   )[rung.elements.length - 1]
+}
+
+function cloneVariable(variable: Variable): Variable {
+  return { ...variable }
+}
+
+function isVariableUsed(project: Project, variableId: string) {
+  return project.rungs.some((rung) =>
+    rung.elements.some((element) => element.variableId === variableId),
+  )
+}
+
+function getUniqueVariableName(project: Project) {
+  const names = new Set(project.variables.map((variable) => variable.name))
+
+  if (!names.has('NewVar')) {
+    return 'NewVar'
+  }
+
+  let index = 1
+
+  while (names.has(`NewVar${index}`)) {
+    index += 1
+  }
+
+  return `NewVar${index}`
+}
+
+function getUniqueMarkerAddress(project: Project) {
+  const addresses = new Set(
+    project.variables.map((variable) => variable.address),
+  )
+  let bitIndex = 0
+
+  while (addresses.has(`%M0.${bitIndex}`)) {
+    bitIndex += 1
+  }
+
+  return `%M0.${bitIndex}`
 }
 
 export function wouldCreateCycle(
@@ -108,6 +153,53 @@ export function removeRung(project: Project, rungId: string): Project {
         ...cloneRung(rung),
         number: index + 1,
       })),
+  }
+}
+
+export function addVariable(project: Project): Project {
+  return {
+    ...project,
+    variables: [
+      ...project.variables.map(cloneVariable),
+      {
+        id: createId('variable'),
+        name: getUniqueVariableName(project),
+        address: getUniqueMarkerAddress(project),
+        type: 'BOOL',
+        value: false,
+      },
+    ],
+    rungs: project.rungs.map(cloneRung),
+  }
+}
+
+export function removeVariable(project: Project, variableId: string): Project {
+  if (isVariableUsed(project, variableId)) {
+    return project
+  }
+
+  return {
+    ...project,
+    variables: project.variables
+      .filter((variable) => variable.id !== variableId)
+      .map(cloneVariable),
+    rungs: project.rungs.map(cloneRung),
+  }
+}
+
+export function updateVariable(
+  project: Project,
+  variableId: string,
+  patch: Partial<Omit<Variable, 'id'>>,
+): Project {
+  return {
+    ...project,
+    variables: project.variables.map((variable) =>
+      variable.id === variableId
+        ? { ...variable, ...patch }
+        : cloneVariable(variable),
+    ),
+    rungs: project.rungs.map(cloneRung),
   }
 }
 
