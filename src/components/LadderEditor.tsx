@@ -42,6 +42,7 @@ import type {
   Rung,
 } from '../types/project'
 import { LadderNode, type LadderNodeData } from './LadderNode'
+import { MobileBlockPicker } from './MobileBlockPicker'
 import { PropertiesPanel } from './PropertiesPanel'
 import { RailNode, type RailNodeData } from './RailNode'
 
@@ -51,6 +52,7 @@ type LadderEditorProps = {
   simulationStatus: 'RUN' | 'STOP'
   simulationState: SimulationState | null
   showDebug: boolean
+  isMobile?: boolean
   t: (key: TranslationKey) => string
 }
 
@@ -77,6 +79,7 @@ const RAIL_Y = 70
 const LEFT_RAIL_X = 0
 const RIGHT_RAIL_X = 760
 const PASTE_OFFSET = 40
+const MOBILE_ADD_POSITION = { x: 360, y: 90 }
 
 function createElementId() {
   return createId('element')
@@ -146,7 +149,6 @@ function mapRungToNodes(
   rung: Rung,
   project: Project,
   selectedElementIds: string[],
-  draftPositions: Record<string, { x: number; y: number }>,
   simulationStatus: 'RUN' | 'STOP',
   simulationState: SimulationState | null,
   t: (key: TranslationKey) => string,
@@ -160,7 +162,7 @@ function mapRungToNodes(
       return {
         id: element.id,
         type: 'ladderNode',
-        position: draftPositions[element.id] ?? element.position,
+        position: element.position,
         selected: selectedElementIds.includes(element.id),
         data: {
           elementType: element.type,
@@ -239,6 +241,7 @@ export function LadderEditor({
   simulationStatus,
   simulationState,
   showDebug,
+  isMobile = false,
   t,
 }: LadderEditorProps) {
   const [selectedElementIds, setSelectedElementIds] = useState<string[]>([])
@@ -246,11 +249,9 @@ export function LadderEditor({
   const [selectedRungId, setSelectedRungId] = useState<string | null>(
     project.rungs[0]?.id ?? null,
   )
-  const [draftPositions, setDraftPositions] = useState<
-    Record<string, { x: number; y: number }>
-  >({})
   const [copiedSelection, setCopiedSelection] =
     useState<CopiedSelection | null>(null)
+  const [pickerRungId, setPickerRungId] = useState<string | null>(null)
   const flowInstancesRef = useRef(new Map<string, ReactFlowInstance>())
   const lastDropRef = useRef<LastDrop | null>(null)
   const canEdit = simulationStatus !== 'RUN'
@@ -439,50 +440,34 @@ export function LadderEditor({
       }
     }
 
-    if (!canEdit) {
-      return
-    }
-
-    const positionChanges = changes.filter(
-      (change) =>
-        change.type === 'position' &&
-        change.position &&
-        !isRailId(change.id),
-    )
-
-    if (positionChanges.length === 0) {
-      return
-    }
-
-    setDraftPositions((currentPositions) => {
-      const nextPositions = { ...currentPositions }
-
-      for (const change of positionChanges) {
-        if (change.type === 'position' && change.position) {
-          nextPositions[change.id] = snapPosition(change.position)
-        }
-      }
-
-      return nextPositions
-    })
+    // Position changes are intentionally committed only on drag stop.
+    // This keeps mobile dragging smooth and creates one undo entry per drag.
   }
 
   const handleNodeDragStop = (
     node: Node<LadderNodeData | RailNodeData>,
+    draggedNodes: Array<Node<LadderNodeData | RailNodeData>> = [node],
   ) => {
     if (!canEdit || isRailId(node.id)) {
       return
     }
 
-    const positionsToCommit = {
-      ...draftPositions,
-      [node.id]: snapPosition(node.position),
+    const positionsToCommit = Object.fromEntries(
+      draggedNodes
+        .filter((draggedNode) => !isRailId(draggedNode.id))
+        .map((draggedNode) => [
+          draggedNode.id,
+          snapPosition(draggedNode.position),
+        ]),
+    )
+
+    if (Object.keys(positionsToCommit).length === 0) {
+      return
     }
 
     setProject((currentProject) =>
       updateElementPositions(currentProject, positionsToCommit),
     )
-    setDraftPositions({})
   }
 
   const handleNodesDelete = (
@@ -496,15 +481,6 @@ export function LadderEditor({
     const deletedElementNodes = deletedNodes.filter((node) => !isRailId(node.id))
 
     clearSelection()
-    setDraftPositions((currentPositions) => {
-      const nextPositions = { ...currentPositions }
-
-      for (const node of deletedElementNodes) {
-        delete nextPositions[node.id]
-      }
-
-      return nextPositions
-    })
     setProject((currentProject) =>
       deletedElementNodes.reduce(
         (nextProject, node) =>
@@ -687,7 +663,6 @@ export function LadderEditor({
           rung,
           project,
           selectedElementIds,
-          draftPositions,
           simulationStatus,
           simulationState,
           t,
@@ -696,7 +671,6 @@ export function LadderEditor({
       })),
     [
       project,
-      draftPositions,
       selectedElementIds,
       selectedEdgeIds,
       simulationState,
@@ -738,6 +712,18 @@ export function LadderEditor({
                   onClick={() => handleRemoveRung(rung.id)}
                 >
                   X
+                </button>
+              )}
+              {canEdit && isMobile && (
+                <button
+                  type="button"
+                  className="mobile-add-block-button"
+                  onClick={() => {
+                    setSelectedRungId(rung.id)
+                    setPickerRungId(rung.id)
+                  }}
+                >
+                  {t('addBlock')}
                 </button>
               )}
             </div>
@@ -788,7 +774,9 @@ export function LadderEditor({
                   }
                 }}
                 onNodesChange={handleNodesChange}
-                onNodeDragStop={(_event, node) => handleNodeDragStop(node)}
+                onNodeDragStop={(_event, node, nodes) =>
+                  handleNodeDragStop(node, nodes)
+                }
                 onInit={(flowInstance) => {
                   flowInstancesRef.current.set(rung.id, flowInstance)
                 }}
@@ -866,6 +854,19 @@ export function LadderEditor({
         selectedRungId={selectedRungId}
         onClearSelection={clearSelection}
         t={t}
+      />
+
+      <MobileBlockPicker
+        open={Boolean(pickerRungId)}
+        t={t}
+        onClose={() => setPickerRungId(null)}
+        onSelect={(elementType) => {
+          if (!pickerRungId) {
+            return
+          }
+
+          handleAddElement(pickerRungId, elementType, MOBILE_ADD_POSITION, false)
+        }}
       />
     </section>
   )

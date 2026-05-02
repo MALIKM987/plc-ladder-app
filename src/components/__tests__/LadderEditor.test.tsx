@@ -27,6 +27,8 @@ vi.mock('reactflow', () => {
       onNodeClick,
       onDragOver,
       onDrop,
+      onNodesChange,
+      onNodeDragStop,
       children,
     }: {
       nodes: Array<{ id: string; data: { variableName?: string; label?: string } }>
@@ -35,6 +37,12 @@ vi.mock('reactflow', () => {
       elementsSelectable: boolean
       onDragOver?: (event: DragEvent<HTMLDivElement>) => void
       onDrop?: (event: DragEvent<HTMLDivElement>) => void
+      onNodesChange?: (changes: unknown[]) => void
+      onNodeDragStop?: (
+        event: unknown,
+        node: { id: string; position: { x: number; y: number } },
+        nodes: Array<{ id: string; position: { x: number; y: number } }>,
+      ) => void
       onNodeClick?: (
         event: { stopPropagation: () => void },
         node: { id: string },
@@ -63,6 +71,34 @@ vi.mock('reactflow', () => {
         {edges.map((edge) => (
           <span key={edge.id} data-testid={`flow-edge-${edge.id}`} />
         ))}
+        <button
+          type="button"
+          data-testid="trigger-position-change"
+          onClick={() =>
+            onNodesChange?.([
+              {
+                type: 'position',
+                id: 'contact',
+                position: { x: 222, y: 88 },
+              },
+            ])
+          }
+        >
+          position change
+        </button>
+        <button
+          type="button"
+          data-testid="trigger-drag-stop"
+          onClick={() =>
+            onNodeDragStop?.(
+              {},
+              { id: 'contact', position: { x: 222, y: 88 } },
+              [{ id: 'contact', position: { x: 222, y: 88 } }],
+            )
+          }
+        >
+          drag stop
+        </button>
         {children}
       </div>
     ),
@@ -117,9 +153,11 @@ function createEditorProject() {
 function LadderEditorHarness({
   initialProject,
   simulationStatus = 'STOP',
+  isMobile = false,
 }: {
   initialProject: Project
   simulationStatus?: 'RUN' | 'STOP'
+  isMobile?: boolean
 }) {
   const [project, setProject] = useState(initialProject)
 
@@ -130,6 +168,7 @@ function LadderEditorHarness({
       simulationStatus={simulationStatus}
       simulationState={null}
       showDebug
+      isMobile={isMobile}
       t={t}
     />
   )
@@ -193,5 +232,39 @@ describe('LadderEditor', () => {
     expect(screen.getAllByTestId(/^flow-node-/)).toHaveLength(5)
     expect(screen.getAllByTestId(/^flow-edge-/)).toHaveLength(3)
     expect(screen.getByDisplayValue('NC_CONTACT')).toBeInTheDocument()
+  })
+
+  it('adds one mobile block from the picker without auto-connecting it', () => {
+    render(
+      <LadderEditorHarness initialProject={createEditorProject()} isMobile />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: t('addBlock') }))
+    fireEvent.click(screen.getByText(t('ncContact')).closest('button')!)
+
+    expect(screen.getAllByTestId(/^flow-node-/)).toHaveLength(5)
+    expect(screen.getAllByTestId(/^flow-edge-/)).toHaveLength(3)
+    expect(screen.getByDisplayValue('NC_CONTACT')).toBeInTheDocument()
+  })
+
+  it('commits node position only on drag stop, not on every position change', () => {
+    const setProject = vi.fn()
+
+    render(
+      <LadderEditor
+        project={createEditorProject()}
+        setProject={setProject}
+        simulationStatus="STOP"
+        simulationState={null}
+        showDebug
+        t={t}
+      />,
+    )
+
+    fireEvent.click(screen.getByTestId('trigger-position-change'))
+    expect(setProject).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByTestId('trigger-drag-stop'))
+    expect(setProject).toHaveBeenCalledTimes(1)
   })
 })

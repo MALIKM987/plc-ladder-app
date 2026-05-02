@@ -9,13 +9,17 @@ import { BlockLibrary } from './components/BlockLibrary'
 import { AutosavePrompt } from './components/AutosavePrompt'
 import { BottomPanel } from './components/BottomPanel'
 import { LadderEditor } from './components/LadderEditor'
+import { MobileAppMenu } from './components/MobileAppMenu'
 import { OnboardingOverlay } from './components/OnboardingOverlay'
 import { SimulationPanel } from './components/SimulationPanel'
 import { TopBar } from './components/TopBar'
 import { ToastViewport, type ToastMessage } from './components/ToastViewport'
+import { ValidationPanel } from './components/ValidationPanel'
+import { VariableTable } from './components/VariableTable'
 import { exportProjectToStructuredText } from './export/stExport'
 import { useAutosaveProject } from './hooks/useAutosaveProject'
 import { useProjectHistory } from './hooks/useProjectHistory'
+import { useResponsiveMode } from './hooks/useResponsiveMode'
 import type { Language } from './i18n/translations'
 import { useTranslation } from './i18n/useTranslation'
 import { demoProject } from './project/demoProject'
@@ -29,6 +33,7 @@ import './App.css'
 
 type SimulationStatus = 'RUN' | 'STOP'
 type Theme = 'light' | 'dark'
+type MobileActivePanel = 'editor' | 'simulation' | 'variables' | 'validation'
 
 const SCAN_INTERVAL_MS = 200
 const THEME_STORAGE_KEY = 'plc-ladder-theme'
@@ -97,9 +102,13 @@ function App() {
   const [showOnboarding, setShowOnboarding] = useState(
     () => localStorage.getItem(ONBOARDING_STORAGE_KEY) !== 'true',
   )
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [mobileActivePanel, setMobileActivePanel] =
+    useState<MobileActivePanel>('editor')
   const [toasts, setToasts] = useState<ToastMessage[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { t } = useTranslation(language)
+  const { isMobile } = useResponsiveMode()
   const { autosavedProject, discardAutosave, markAutosaveHandled } =
     useAutosaveProject(project)
 
@@ -341,18 +350,77 @@ function App() {
     showToast(t('simulationResetDone'))
   }
 
+  const handleAbout = () => {
+    window.alert(t('aboutMessage'))
+  }
+
   const handleCloseOnboarding = () => {
     localStorage.setItem(ONBOARDING_STORAGE_KEY, 'true')
     setShowOnboarding(false)
   }
 
+  const canUseUndo = simulationStatus !== 'RUN' && canUndo
+  const canUseRedo = simulationStatus !== 'RUN' && canRedo
+
   return (
-    <div className={`app-shell app-shell--${theme}`}>
-      <TopBar
+    <div
+      className={`app-shell app-shell--${theme} ${
+        isMobile ? 'app-shell--mobile' : ''
+      }`}
+    >
+      {isMobile ? (
+        <header className="mobile-topbar">
+          <div className="topbar__brand">
+            <span className="topbar__mark" aria-hidden="true">
+              LD
+            </span>
+            <div>
+              <h1>PLC Ladder Studio</h1>
+              <p>{simulationStatus === 'RUN' ? 'RUN' : 'STOP'}</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            className="mobile-menu-button"
+            onClick={() => setMobileMenuOpen(true)}
+          >
+            ☰ {t('menu')}
+          </button>
+        </header>
+      ) : (
+        <TopBar
+          t={t}
+          language={language}
+          theme={theme}
+          showDebug={showDebug}
+          onLanguageChange={setLanguage}
+          onThemeChange={setTheme}
+          onShowDebugChange={setShowDebug}
+          onNewProject={handleNewProject}
+          onLoadDemo={handleLoadDemo}
+          onOpenProject={handleOpenProject}
+          onSaveProject={handleSaveProject}
+          onExportStructuredText={handleExportStructuredText}
+          onUndo={handleUndo}
+          onRedo={handleRedo}
+          canUndo={canUseUndo}
+          canRedo={canUseRedo}
+          onRunSimulation={handleRunSimulation}
+          onStopSimulation={handleStopSimulation}
+          onStepScan={handleStepScan}
+          onResetSimulation={handleResetSimulation}
+        />
+      )}
+
+      <MobileAppMenu
+        open={isMobile && mobileMenuOpen}
         t={t}
         language={language}
         theme={theme}
         showDebug={showDebug}
+        canUndo={canUseUndo}
+        canRedo={canUseRedo}
+        onClose={() => setMobileMenuOpen(false)}
         onLanguageChange={setLanguage}
         onThemeChange={setTheme}
         onShowDebugChange={setShowDebug}
@@ -363,45 +431,124 @@ function App() {
         onExportStructuredText={handleExportStructuredText}
         onUndo={handleUndo}
         onRedo={handleRedo}
-        canUndo={simulationStatus !== 'RUN' && canUndo}
-        canRedo={simulationStatus !== 'RUN' && canRedo}
         onRunSimulation={handleRunSimulation}
         onStopSimulation={handleStopSimulation}
         onStepScan={handleStepScan}
         onResetSimulation={handleResetSimulation}
+        onAbout={handleAbout}
       />
 
-      <main className="workspace" aria-label="PLC Ladder workspace">
-        <BlockLibrary t={t} />
-        <LadderEditor
-          project={project}
-          setProject={
-            simulationStatus === 'RUN' ? setProjectWithoutHistory : setProject
-          }
-          simulationStatus={simulationStatus}
-          simulationState={simulationState}
-          showDebug={showDebug}
-          t={t}
-        />
-        <SimulationPanel
-          project={project}
-          setProject={setProjectWithoutHistory}
-          simulationStatus={simulationStatus}
-          scanCount={scanCount}
-          scanIntervalMs={SCAN_INTERVAL_MS}
-          simulationState={simulationState}
-          showDebug={showDebug}
-          t={t}
-        />
-      </main>
+      {isMobile ? (
+        <>
+          <main
+            className="mobile-workspace"
+            aria-label="PLC Ladder mobile workspace"
+          >
+            {mobileActivePanel === 'editor' && (
+              <LadderEditor
+                project={project}
+                setProject={
+                  simulationStatus === 'RUN'
+                    ? setProjectWithoutHistory
+                    : setProject
+                }
+                simulationStatus={simulationStatus}
+                simulationState={simulationState}
+                showDebug={showDebug}
+                isMobile
+                t={t}
+              />
+            )}
 
-      <BottomPanel
-        project={project}
-        setProject={setProject}
-        simulationStatus={simulationStatus}
-        onNotify={showToast}
-        t={t}
-      />
+            {mobileActivePanel === 'simulation' && (
+              <SimulationPanel
+                project={project}
+                setProject={setProjectWithoutHistory}
+                simulationStatus={simulationStatus}
+                scanCount={scanCount}
+                scanIntervalMs={SCAN_INTERVAL_MS}
+                simulationState={simulationState}
+                showDebug={showDebug}
+                t={t}
+              />
+            )}
+
+            {mobileActivePanel === 'variables' && (
+              <VariableTable
+                project={project}
+                setProject={setProject}
+                simulationStatus={simulationStatus}
+                onNotify={showToast}
+                t={t}
+              />
+            )}
+
+            {mobileActivePanel === 'validation' && (
+              <ValidationPanel project={project} t={t} />
+            )}
+          </main>
+
+          <nav className="mobile-tabs" aria-label="Mobile panels">
+            {(
+              [
+                ['editor', t('editorPanel')],
+                ['simulation', t('simulationPanel')],
+                ['variables', t('variablesPanel')],
+                ['validation', t('validationPanel')],
+              ] as const
+            ).map(([panel, label]) => (
+              <button
+                key={panel}
+                type="button"
+                className={
+                  mobileActivePanel === panel
+                    ? 'mobile-tabs__button--active'
+                    : ''
+                }
+                onClick={() => setMobileActivePanel(panel)}
+              >
+                {label}
+              </button>
+            ))}
+          </nav>
+        </>
+      ) : (
+        <>
+          <main className="workspace" aria-label="PLC Ladder workspace">
+            <BlockLibrary t={t} />
+            <LadderEditor
+              project={project}
+              setProject={
+                simulationStatus === 'RUN'
+                  ? setProjectWithoutHistory
+                  : setProject
+              }
+              simulationStatus={simulationStatus}
+              simulationState={simulationState}
+              showDebug={showDebug}
+              t={t}
+            />
+            <SimulationPanel
+              project={project}
+              setProject={setProjectWithoutHistory}
+              simulationStatus={simulationStatus}
+              scanCount={scanCount}
+              scanIntervalMs={SCAN_INTERVAL_MS}
+              simulationState={simulationState}
+              showDebug={showDebug}
+              t={t}
+            />
+          </main>
+
+          <BottomPanel
+            project={project}
+            setProject={setProject}
+            simulationStatus={simulationStatus}
+            onNotify={showToast}
+            t={t}
+          />
+        </>
+      )}
 
       <input
         ref={fileInputRef}

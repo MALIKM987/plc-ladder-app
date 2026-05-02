@@ -1,5 +1,7 @@
 export { AutosavePrompt } from '../../components/AutosavePrompt'
 export { ErrorBoundary } from '../../components/ErrorBoundary'
+export { MobileAppMenu } from '../../components/MobileAppMenu'
+export { MobileBlockPicker } from '../../components/MobileBlockPicker'
 export { OnboardingOverlay } from '../../components/OnboardingOverlay'
 export { ToastViewport } from '../../components/ToastViewport'
 export { TopBar } from '../../components/TopBar'
