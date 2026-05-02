@@ -259,6 +259,7 @@ export function LadderEditor({
   const clearSelection = () => {
     setSelectedElementIds([])
     setSelectedEdgeIds([])
+    setSelectedRungId(null)
   }
 
   const handleAddRung = () => {

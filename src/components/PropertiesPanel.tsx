@@ -1,5 +1,11 @@
-import type { Dispatch, SetStateAction } from 'react'
+import {
+  type Dispatch,
+  type ReactNode,
+  type SetStateAction,
+  useState,
+} from 'react'
 import { LEFT_RAIL_ID, RIGHT_RAIL_ID } from '../constants/rails'
+import { useResponsiveMode } from '../hooks/useResponsiveMode'
 import type { TranslationKey } from '../i18n/translations'
 import {
   autoLayoutRung,
@@ -115,6 +121,15 @@ function createVariableForType(project: Project, variableType: VariableType) {
   return createBoolVariable(project)
 }
 
+function formatRungSummary(rung: Rung, t: (key: TranslationKey) => string) {
+  const number = String(rung.number).padStart(3, '0')
+  const title = rung.title?.trim()
+
+  return title
+    ? `${t('rungSummary')} ${number}: ${title}`
+    : `${t('rungSummary')} ${number}`
+}
+
 export function PropertiesPanel({
   project,
   setProject,
@@ -126,9 +141,26 @@ export function PropertiesPanel({
   t,
 }: PropertiesPanelProps) {
   const canEdit = simulationStatus !== 'RUN'
+  const { isMobile } = useResponsiveMode()
   const elementSelection = findElementSelection(project, selectedElementId)
   const edgeSelection = findEdgeSelection(project, selectedEdgeId)
   const rungSelection = findRung(project, selectedRungId)
+  const selectionKey = [
+    isMobile ? 'mobile' : 'desktop',
+    selectedElementId ?? '',
+    selectedEdgeId ?? '',
+    selectedRungId ?? '',
+  ].join(':')
+  const defaultCollapsed =
+    isMobile && !selectedElementId && !selectedEdgeId && Boolean(selectedRungId)
+  const [collapseState, setCollapseState] = useState({
+    isCollapsed: defaultCollapsed,
+    selectionKey,
+  })
+  const isCollapsed =
+    collapseState.selectionKey === selectionKey
+      ? collapseState.isCollapsed
+      : defaultCollapsed
 
   const handleVariableChange = (elementId: string, variableId: string) => {
     if (!canEdit || !variableId) {
@@ -208,12 +240,63 @@ export function PropertiesPanel({
     )
   }
 
+  const renderPanel = (
+    title: string,
+    summary: string,
+    content: ReactNode,
+  ) => (
+    <aside
+      className={`properties-panel ${
+        isCollapsed ? 'properties-panel--collapsed' : ''
+      }`}
+      aria-label={t('properties')}
+    >
+      <div className="properties-panel__header">
+        <div className="properties-panel__heading">
+          <h3>{title}</h3>
+          <p>{summary}</p>
+        </div>
+        <div className="properties-panel__actions">
+          <button
+            type="button"
+            aria-label={isCollapsed ? t('expandPanel') : t('collapsePanel')}
+            title={isCollapsed ? t('expandPanel') : t('collapsePanel')}
+            onClick={() =>
+              setCollapseState({
+                isCollapsed: !isCollapsed,
+                selectionKey,
+              })
+            }
+          >
+            {isCollapsed ? '+' : '−'}
+          </button>
+          <button
+            type="button"
+            aria-label={t('closePanel')}
+            title={t('closePanel')}
+            onClick={onClearSelection}
+          >
+            ×
+          </button>
+        </div>
+      </div>
+
+      {!isCollapsed && (
+        <div className="properties-panel__body">{content}</div>
+      )}
+    </aside>
+  )
+
   if (edgeSelection) {
     const { rung, edge } = edgeSelection
 
-    return (
-      <aside className="properties-panel" aria-label={t('properties')}>
-        <h3>{t('properties')}</h3>
+    return renderPanel(
+      t('properties'),
+      `${t('connection')}: ${getEndpointDisplayName(
+        project,
+        edge.fromElementId,
+      )} -> ${getEndpointDisplayName(project, edge.toElementId)}`,
+      <>
         <dl>
           <dt>{t('connection')}</dt>
           <dd>
@@ -230,7 +313,7 @@ export function PropertiesPanel({
             {t('deleteConnection')}
           </button>
         )}
-      </aside>
+      </>,
     )
   }
 
@@ -247,9 +330,10 @@ export function PropertiesPanel({
       (variable) => variable.id === element.variableId,
     )
 
-    return (
-      <aside className="properties-panel" aria-label={t('properties')}>
-        <h3>{t('properties')}</h3>
+    return renderPanel(
+      t('properties'),
+      `${t('elementSummary')}: ${getElementTypeLabel(element)}`,
+      <>
         <div className="properties-grid">
           <label>
             {t('elementType')}
@@ -349,14 +433,15 @@ export function PropertiesPanel({
             {t('deleteElement')}
           </button>
         )}
-      </aside>
+      </>,
     )
   }
 
   if (rungSelection) {
-    return (
-      <aside className="properties-panel" aria-label={t('properties')}>
-        <h3>{t('rungProperties')}</h3>
+    return renderPanel(
+      t('rungProperties'),
+      formatRungSummary(rungSelection, t),
+      <>
         <div className="properties-grid">
           <label>
             {t('rungTitle')}
@@ -415,14 +500,9 @@ export function PropertiesPanel({
             </button>
           )}
         </div>
-      </aside>
+      </>,
     )
   }
 
-  return (
-    <aside className="properties-panel" aria-label={t('properties')}>
-      <h3>{t('properties')}</h3>
-      <p>{t('selectElement')}</p>
-    </aside>
-  )
+  return renderPanel(t('properties'), t('selectElement'), <p>{t('selectElement')}</p>)
 }
